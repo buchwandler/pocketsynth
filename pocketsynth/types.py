@@ -11,6 +11,15 @@ from .audio import float_to_int16, write_wav
 from .diagnostics import RuntimeDiagnostics, TimingDiagnostics
 from .errors import ModelInferenceError, OptionalDependencyError
 
+@dataclass(frozen=True, slots=True)
+class AudioMarker:
+    """A marker in synthesized audio, either resolved or unresolved."""
+    id: str
+    status: Literal["resolved", "unresolved"]
+    sample_offset: int | None = None
+    seconds: float | None = None
+    plan_unit_id: str | None = None
+    reason: str | None = None
 
 @dataclass(slots=True)
 class AudioChunk:
@@ -46,7 +55,7 @@ class AudioResult:
     plan: UtterancePlan | None = None
     plan_id: str | None = None
     chunks: list[AudioChunk] = field(default_factory=list)
-    markers: list[dict[str, Any]] = field(default_factory=list)
+    markers: list[AudioMarker] = field(default_factory=list)
     warnings: tuple[str, ...] = ()
     diagnostics: RuntimeDiagnostics | None = None
     timing: TimingDiagnostics | None = None
@@ -62,6 +71,12 @@ class AudioResult:
         return self.audio.size / self.sample_rate
 
     def save_wav(self, target: str | Path | BinaryIO) -> str | Path | BinaryIO:
+        """Write audio to a WAV file. Creates parent directories for path targets."""
+        if isinstance(target, (str, Path)):
+            path = Path(target)
+            path.parent.mkdir(parents=True, exist_ok=True)
+            write_wav(path, self.audio, self.sample_rate)
+            return path
         write_wav(target, self.audio, self.sample_rate)
         return target
 

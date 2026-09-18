@@ -28,7 +28,8 @@ def main(argv: list[str] | None = None) -> int:
         )
         with pipeline:
             pipeline.set_default_voice(args.voice)
-            pipeline(args.text).save_wav(args.output)
+            result = pipeline.run(args.text)
+            result.save_wav(args.output)
         return 0
     return 2
 

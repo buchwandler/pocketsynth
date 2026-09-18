@@ -16,8 +16,20 @@ class PreparedVoice:
     state: Any
     sample_rate: int
     source: str | None = None
+    bundle_id: str | None = None
+    runtime_fingerprint: str | None = None
     metadata: dict[str, Any] = field(default_factory=dict)
 
+    def validate_compatible(self, *, bundle_id: str | None = None, sample_rate: int | None = None) -> None:
+        """Check that this voice is compatible with the target runtime."""
+        if sample_rate is not None and self.sample_rate != sample_rate:
+            raise VoicePromptError(
+                f"PreparedVoice sample rate {self.sample_rate} does not match target {sample_rate}"
+            )
+        if bundle_id is not None and self.bundle_id is not None and self.bundle_id != bundle_id:
+            raise VoicePromptError(
+                f"PreparedVoice bundle {self.bundle_id!r} does not match target {bundle_id!r}"
+            )
 
 def _read_pcm_wav(path: str | Path) -> tuple[np.ndarray, int]:
     source = Path(path)

@@ -133,8 +133,19 @@ class PocketPipeline:
         language: str | None = None,
         unit: Literal["paragraph", "sentence"] = "sentence",
         text_preparation: Literal["identity", "spokenform"] = "spokenform",
-        **planner_options: Any,
+        document_format: Literal["plain", "ssmd"] = "plain",
+        pauses: Any | None = None,
+        linguistics: Any | None = None,
+        ssmd: Any | None = None,
+        overlap_mode: Literal["snap", "strict"] = "snap",
+        language_aliases: Mapping[str, str] | None = None,
+        planner_diagnostics: bool = True,
+        directive_policy: Literal["error", "warn", "ignore"] = "error",
+        language_policy: Literal["strict", "allow"] = "strict",
+        retain_unit_audio: bool = False,
+        return_diagnostics: bool = True,
     ) -> "PocketPipeline":
+        """Open a local Pocket bundle directory without network access."""
         paths = BundlePaths.from_directory(directory, precision=precision)
         runtime = PocketRuntime.load(
             directory,
@@ -153,7 +164,17 @@ class PocketPipeline:
             language=language or planner_language(paths.metadata),
             unit=unit,
             text_preparation=text_preparation,
-            **planner_options,
+            document_format=document_format,
+            pauses=pauses,
+            linguistics=linguistics,
+            ssmd=ssmd,
+            overlap_mode=overlap_mode,
+            language_aliases=language_aliases or {},
+            planner_diagnostics=planner_diagnostics,
+            directive_policy=directive_policy,
+            language_policy=language_policy,
+            retain_unit_audio=retain_unit_audio,
+            return_diagnostics=return_diagnostics,
         )
         return cls(config, runtime=runtime)
 
@@ -175,8 +196,19 @@ class PocketPipeline:
         unit: Literal["paragraph", "sentence"] = "sentence",
         text_preparation: Literal["identity", "spokenform"] = "spokenform",
         progress: Any | None = None,
-        **planner_options: Any,
+        document_format: Literal["plain", "ssmd"] = "plain",
+        pauses: Any | None = None,
+        linguistics: Any | None = None,
+        ssmd: Any | None = None,
+        overlap_mode: Literal["snap", "strict"] = "snap",
+        language_aliases: Mapping[str, str] | None = None,
+        planner_diagnostics: bool = True,
+        directive_policy: Literal["error", "warn", "ignore"] = "error",
+        language_policy: Literal["strict", "allow"] = "strict",
+        retain_unit_audio: bool = False,
+        return_diagnostics: bool = True,
     ) -> "PocketPipeline":
+        """Open a managed Pocket bundle, downloading if needed."""
         resolved = install_pretrained_bundle(
             bundle,
             precision=precision,
@@ -202,7 +234,17 @@ class PocketPipeline:
             language=language or planner_language(runtime.metadata),
             unit=unit,
             text_preparation=text_preparation,
-            **planner_options,
+            document_format=document_format,
+            pauses=pauses,
+            linguistics=linguistics,
+            ssmd=ssmd,
+            overlap_mode=overlap_mode,
+            language_aliases=language_aliases or {},
+            planner_diagnostics=planner_diagnostics,
+            directive_policy=directive_policy,
+            language_policy=language_policy,
+            retain_unit_audio=retain_unit_audio,
+            return_diagnostics=return_diagnostics,
         )
         return cls(config, runtime=runtime)
 
@@ -377,12 +419,25 @@ class PocketPipeline:
                 "bundle_id": self.runtime.bundle_id,
                 "precision": self.runtime.precision,
                 "source_revision": self.runtime.source_revision,
+                "sample_rate": composition.sample_rate,
+                "plan_id": plan.plan_id,
+                "model_chunk_count": len(rendered),
             },
         )
 
-    def __call__(self, text: str, *, voice: Any | None = None, **kwargs: Any) -> AudioResult:
+    def run(
+        self,
+        text: str,
+        *,
+        voice: Any | None = None,
+        voice_bindings: Mapping[str, Any] | None = None,
+    ) -> AudioResult:
+        """Plan text and render to audio."""
         plan = self.plan(text)
-        return self.render_plan(plan, voice=voice, **kwargs)
+        return self.render_plan(plan, voice=voice, voice_bindings=voice_bindings)
+
+    def __call__(self, text: str, *, voice: Any | None = None, **kwargs: Any) -> AudioResult:
+        return self.run(text, voice=voice, **kwargs)
 
     def iter_units(
         self,
