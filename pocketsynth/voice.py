@@ -33,16 +33,25 @@ class PreparedVoice:
 
 def _read_pcm_wav(path: str | Path) -> tuple[np.ndarray, int]:
     source = Path(path)
-    with wave.open(str(source), "rb") as handle:
-        channels = handle.getnchannels()
-        width = handle.getsampwidth()
-        sample_rate = handle.getframerate()
-        frames = handle.readframes(handle.getnframes())
-    if channels != 1 or width != 2:
-        raise VoicePromptError("MVP WAV voice prompts must be mono 16-bit PCM")
+    try:
+        with wave.open(str(source), "rb") as handle:
+            channels = handle.getnchannels()
+            width = handle.getsampwidth()
+            sample_rate = handle.getframerate()
+            compression = handle.getcomptype()
+            frames = handle.readframes(handle.getnframes())
+    except (OSError, EOFError, wave.Error) as exc:
+        raise VoicePromptError(
+            f"Expected mono PCM WAV voice prompt; could not read {source}: {exc}"
+        ) from exc
+    if channels != 1 or width != 2 or compression != "NONE" or sample_rate <= 0:
+        raise VoicePromptError(
+            "Expected mono PCM WAV voice prompt; "
+            f"actual channels={channels}, sample width={width} bytes, "
+            f"sample rate={sample_rate} Hz, compression={compression!r}"
+        )
     audio = np.frombuffer(frames, dtype="<i2").astype(np.float32) / 32768.0
     return audio, sample_rate
-
 
 def _resample_linear(audio: np.ndarray, source_rate: int, target_rate: int) -> np.ndarray:
     audio = as_float32_mono(audio)

@@ -1,7 +1,6 @@
-from __future__ import annotations
-
+from collections.abc import Mapping, Sequence
 from pathlib import Path
-from typing import Any, Mapping, Sequence
+from typing import Any
 
 import numpy as np
 
@@ -52,7 +51,7 @@ class PocketRuntime:
         providers: Sequence[Any] | str | None = None,
         provider_options: Mapping[str, Any] | None = None,
         session_options: Any | None = None,
-    ) -> "PocketRuntime":
+    ) -> "PocketRuntime":  # noqa: UP037
         paths = BundlePaths.from_directory(directory, precision=precision)
         runtime = open_local_bundle(
             paths,
@@ -76,7 +75,7 @@ class PocketRuntime:
         providers: Sequence[Any] | str | None = None,
         provider_options: Mapping[str, Any] | None = None,
         session_options: Any | None = None,
-    ) -> "PocketRuntime":
+    ) -> "PocketRuntime":  # noqa: UP037
         metadata = BundleMetadata.load(resolved.metadata_path)
         runtime = open_installed_bundle(
             resolved,
@@ -100,7 +99,18 @@ class PocketRuntime:
 
     def prepare_voice(self, source: Any) -> PreparedVoice:
         self._ensure_open()
-        return prepare_voice(self.runtime, source, sample_rate=self.sample_rate)
+        voice = prepare_voice(self.runtime, source, sample_rate=self.sample_rate)
+        voice.validate_compatible(bundle_id=self.bundle_id, sample_rate=self.sample_rate)
+        if voice.bundle_id == self.bundle_id:
+            return voice
+        return PreparedVoice(
+            state=voice.state,
+            sample_rate=voice.sample_rate,
+            source=voice.source,
+            bundle_id=self.bundle_id,
+            runtime_fingerprint=self.bundle_id,
+            metadata=voice.metadata,
+        )
 
     def infer_tokens(
         self,
@@ -109,6 +119,7 @@ class PocketRuntime:
         generation: GenerationConfig,
     ) -> np.ndarray:
         self._ensure_open()
+        voice.validate_compatible(bundle_id=self.bundle_id, sample_rate=self.sample_rate)
         if len(token_ids) > self.metadata.max_token_per_chunk:
             raise ValueError(
                 f"Pocket token sequence has {len(token_ids)} tokens; "
@@ -130,7 +141,7 @@ class PocketRuntime:
         except Exception as exc:
             if isinstance(exc, (ValueError, ModelInferenceError)):
                 raise
-            raise ModelInferenceError("Pocket ONNX inference failed") from exc
+            raise ModelInferenceError(f"Pocket ONNX inference failed: {exc}") from exc
         sample_rate = int(getattr(result, "sample_rate", 0))
         if sample_rate != self.sample_rate:
             raise ModelInferenceError(
@@ -163,7 +174,7 @@ class PocketRuntime:
         if self._closed:
             raise PipelineClosedError("PocketRuntime is closed")
 
-    def __enter__(self) -> "PocketRuntime":
+    def __enter__(self) -> "PocketRuntime":  # noqa: UP037
         self._ensure_open()
         return self
 

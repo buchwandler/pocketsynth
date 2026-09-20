@@ -1,8 +1,9 @@
 from __future__ import annotations
 
+from collections.abc import Mapping
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any, Mapping
+from typing import Any
 
 from ._onnxvoice import ResolvedPocketBundle, installation_to_bundle_info
 
@@ -19,7 +20,7 @@ class PocketBundle:
     installation: Any | None = None
 
     @classmethod
-    def from_resolved(cls, resolved: ResolvedPocketBundle) -> "PocketBundle":
+    def from_resolved(cls, resolved: ResolvedPocketBundle) -> PocketBundle:
         return cls(
             resolved.bundle_id,
             resolved.path,
@@ -32,5 +33,5 @@ class PocketBundle:
         )
 
     @classmethod
-    def from_installation(cls, installation: Any) -> "PocketBundle":
+    def from_installation(cls, installation: Any) -> PocketBundle:
         return cls.from_resolved(installation_to_bundle_info(installation))

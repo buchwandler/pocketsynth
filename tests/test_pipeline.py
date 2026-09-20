@@ -3,27 +3,18 @@
 from __future__ import annotations
 
 import json
-from dataclasses import dataclass
 from pathlib import Path
 from unittest.mock import MagicMock, patch
 
 import numpy as np
 import pytest
 
-from pocketsynth.config import GenerationConfig, PipelineConfig
-from pocketsynth.errors import PipelineClosedError, VoiceBindingError
+from pocketsynth.config import PipelineConfig
+from pocketsynth.errors import PipelineClosedError, VoiceBindingError, VoicePromptError
 from pocketsynth.pipeline import PocketPipeline
 from pocketsynth.voice import PreparedVoice
-
 from tests.fakes import FakeBundleMetadata, FakePocketRuntime, make_test_voice
-import numpy as np
-import pytest
 
-from pocketsynth.config import GenerationConfig, PipelineConfig
-from pocketsynth.errors import PipelineClosedError, VoiceBindingError
-from pocketsynth.pipeline import PocketPipeline
-
-from tests.fakes import FakeBundleMetadata, FakePocketRuntime, make_test_voice
 
 def _make_config(tmp_path: Path) -> PipelineConfig:
     """Create a minimal PipelineConfig with fake bundle metadata."""
@@ -66,6 +57,13 @@ def test_pipeline_context_manager_closes_runtime(tmp_path):
         pass
     assert runtime._closed
 
+
+def test_pipeline_context_manager_closes_planner(tmp_path):
+    pipeline, runtime = _make_pipeline(tmp_path)
+    planner = MagicMock()
+    pipeline._planner = planner
+    pipeline.close()
+    planner.close.assert_called_once_with()
 
 def test_pipeline_run_after_close_fails(tmp_path):
     pipeline, runtime = _make_pipeline(tmp_path)
@@ -182,7 +180,6 @@ def test_retain_unit_audio_contract(tmp_path):
 
 def test_empty_or_whitespace_text_behavior(tmp_path):
     pipeline, runtime = _make_pipeline(tmp_path)
-    voice = make_test_voice()
 
     with pipeline:
         # The planner should handle empty text
@@ -282,6 +279,21 @@ def test_prepared_voice_is_reused_without_reencoding(tmp_path):
     assert pipeline._default_voice is voice
 
 
+def test_prepared_voice_is_encoded_once_for_multiple_calls(tmp_path):
+    pipeline, runtime = _make_pipeline(tmp_path)
+    with pipeline:
+        pipeline.set_default_voice("voice.wav")
+        with patch("pocketsynth.pipeline.adapt_plan", return_value=()):
+            with patch("pocketsynth.pipeline.build_audio_job", return_value=(MagicMock(), ())):
+                with patch("audiocompose.Composer") as mock_composer:
+                    mock_composer.return_value.compose.return_value = MagicMock(
+                        audio=np.zeros(100, dtype=np.float32),
+                        sample_rate=24000,
+                    )
+                    pipeline.run("First sentence.")
+                    pipeline.run("Second sentence.")
+    assert runtime._prepare_count == 1
+
 def test_prepared_voice_from_incompatible_runtime_is_rejected():
     from pocketsynth.voice import PreparedVoice
 
@@ -291,7 +303,7 @@ def test_prepared_voice_from_incompatible_runtime_is_rejected():
         source="test.wav",
         bundle_id="other-bundle",
     )
-    with pytest.raises(Exception):
+    with pytest.raises(VoicePromptError):
         voice.validate_compatible(bundle_id="fake-pocket", sample_rate=24000)
 
 

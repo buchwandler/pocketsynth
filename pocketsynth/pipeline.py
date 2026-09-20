@@ -16,7 +16,8 @@ from .bundle import BundleMetadata, BundlePaths, Precision
 from .config import GenerationConfig, PipelineConfig
 from .diagnostics import TimingDiagnostics
 from .errors import PipelineClosedError, VoiceBindingError
-from .plan_adapter import PreparedPocketUnit, prepare_plan as adapt_plan
+from .plan_adapter import PreparedPocketUnit
+from .plan_adapter import prepare_plan as adapt_plan
 from .planning import planner_config_from_pocketsynth, planner_language
 from .runtime import PocketRuntime
 from .types import AudioChunk, AudioResult, AudioUnitDescriptor, AudioUnitResult
@@ -31,7 +32,7 @@ except ImportError:
 class PreparedAudioUnits:
     def __init__(
         self,
-        pipeline: "PocketPipeline",
+        pipeline: PocketPipeline,
         plan: UtterancePlan,
         units: tuple[PreparedPocketUnit, ...],
         default_voice: PreparedVoice,
@@ -144,7 +145,7 @@ class PocketPipeline:
         language_policy: Literal["strict", "allow"] = "strict",
         retain_unit_audio: bool = False,
         return_diagnostics: bool = True,
-    ) -> "PocketPipeline":
+    ) -> PocketPipeline:
         """Open a local Pocket bundle directory without network access."""
         paths = BundlePaths.from_directory(directory, precision=precision)
         runtime = PocketRuntime.load(
@@ -207,7 +208,7 @@ class PocketPipeline:
         language_policy: Literal["strict", "allow"] = "strict",
         retain_unit_audio: bool = False,
         return_diagnostics: bool = True,
-    ) -> "PocketPipeline":
+    ) -> PocketPipeline:
         """Open a managed Pocket bundle, downloading if needed."""
         resolved = install_pretrained_bundle(
             bundle,
@@ -474,7 +475,7 @@ class PocketPipeline:
         if self._closed:
             raise PipelineClosedError("PocketPipeline is closed")
 
-    def __enter__(self) -> "PocketPipeline":
+    def __enter__(self) -> PocketPipeline:
         self._ensure_open()
         return self
 

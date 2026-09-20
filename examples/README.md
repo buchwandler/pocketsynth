@@ -1,71 +1,94 @@
-# PocketSynth Examples
+# PocketSynth examples
 
-This directory contains runnable examples demonstrating PocketSynth usage.
+These examples are ordered from the smallest successful first-WAV path to the more explicit planning APIs.
 
 ## Prerequisites
-
-Install PocketSynth and its dependencies:
 
 ```bash
 pip install -e ".[cpu]"
 ```
 
-For local examples, download a Pocket ONNX bundle and prepare a reference voice WAV.
-
-## Environment Variables
-
-| Variable | Required | Description |
-|----------|----------|-------------|
-| `POCKETSYNTH_EXAMPLE_VOICE` | Yes | Path to a mono 16-bit PCM reference WAV |
-| `POCKETSYNTH_EXAMPLE_BUNDLE_DIR` | For local | Path to a local Pocket ONNX bundle directory |
-| `POCKETSYNTH_EXAMPLE_BUNDLE` | For managed | Managed bundle name (default: `english_2026-04`) |
-| `POCKETSYNTH_EXAMPLE_OUTPUT_DIR` | No | Custom output directory (default: `example-artefacts/`) |
-
-## Examples
-
-### basic_local.py
-
-Smallest local bundle example. Requires `POCKETSYNTH_EXAMPLE_BUNDLE_DIR`.
+Set a mono 16-bit PCM reference WAV for examples that synthesize audio:
 
 ```bash
-export POCKETSYNTH_EXAMPLE_BUNDLE_DIR=/path/to/pocket-tts-onnx/onnx/english_2026-04
-export POCKETSYNTH_EXAMPLE_VOICE=/path/to/reference_sample.wav
-python examples/basic_local.py
+export POCKETSYNTH_EXAMPLE_VOICE=/path/to/reference.wav
 ```
 
-### basic.py
-
-Managed bundle example. Requires OnnxVoice Pocket catalog support.
+Managed examples use the OnnxVoice catalog and default to `english_2026-04`. Local examples additionally need:
 
 ```bash
-export POCKETSYNTH_EXAMPLE_VOICE=/path/to/reference_sample.wav
-python examples/basic.py
+export POCKETSYNTH_EXAMPLE_BUNDLE_DIR=/path/to/onnx/english_2026-04
 ```
 
-### pretrained_pipeline.py
+## 1. First WAV, managed
 
-Demonstrates prepared-voice reuse: prepare once, synthesize multiple sentences.
-
-### plan_roundtrip.py
-
-Demonstrates semantic reproducibility: plan, save, reload, render.
-
-### run_all.py
-
-Run all examples and validate outputs:
+The smallest managed path is `first_wav.py`:
 
 ```bash
-python examples/run_all.py
+python examples/first_wav.py
 ```
 
-Options:
-- `--list`: List available examples
-- `--fail-fast`: Stop on first failure
+It writes `example-artefacts/first_wav.wav`.
 
-## Output
+For visible download progress, use:
 
-Examples write artifacts to `example-artefacts/` (or `POCKETSYNTH_EXAMPLE_OUTPUT_DIR`).
+```bash
+python examples/download_and_synthesize.py
+```
 
-Each example produces:
-- A `.utterplan.json` file (the semantic plan)
-- A `.wav` file (the synthesized audio)
+## 2. First WAV, local
+
+`first_wav_local.py` skips catalog resolution and plan persistence:
+
+```bash
+python examples/first_wav_local.py
+```
+
+A local failure points at the bundle or runtime. If local succeeds but managed fails, inspect catalog and installation behavior.
+
+## 3. Explicit UtterPlan example
+
+`basic.py` demonstrates planning, saving, and rendering a managed bundle. `basic_local.py` is the corresponding network-free path.
+
+## 4. Prepared voice reuse
+
+`pretrained_pipeline.py` prepares one voice and renders two sentences without re-encoding the voice:
+
+```bash
+python examples/pretrained_pipeline.py
+```
+
+## 5. Plan round-trip
+
+`plan_roundtrip.py` saves an UtterancePlan, reloads it, and renders the reloaded plan.
+
+## 6. Run all examples
+
+The runner avoids surprise multi-hundred-megabyte downloads by default:
+
+```bash
+python examples/run_all.py --list
+python examples/run_all.py --local-only
+python examples/run_all.py --include-network
+python examples/run_all.py --managed-only --include-network
+python examples/run_all.py --include-network --offline
+python examples/run_all.py --include-network --fail-fast
+```
+
+Managed execution requires `--include-network`, except when using `--offline` with assets already cached by OnnxVoice. Local execution requires `POCKETSYNTH_EXAMPLE_BUNDLE_DIR`.
+
+The runner validates every generated WAV as mono 16-bit PCM with a positive frame count and non-silent samples. It validates UtterPlan files with UtterPlan itself.
+
+## WAV container verification
+
+No additional audio library is needed to inspect the container:
+
+```bash
+python - <<'PY'
+import wave
+with wave.open("example-artefacts/first_wav.wav", "rb") as f:
+    print(f.getframerate(), f.getnframes())
+PY
+```
+
+All scripts honor `POCKETSYNTH_EXAMPLE_OUTPUT_DIR`. Managed scripts honor `POCKETSYNTH_EXAMPLE_OFFLINE=1`.

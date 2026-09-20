@@ -28,7 +28,7 @@ class BundleMetadata:
     raw: dict[str, Any] | None = None
 
     @classmethod
-    def load(cls, path: str | Path) -> "BundleMetadata":
+    def load(cls, path: str | Path) -> BundleMetadata:
         source = Path(path)
         if not source.is_file():
             raise BundleNotFoundError(f"Missing Pocket bundle metadata: {source}")
@@ -93,7 +93,7 @@ class BundlePaths:
     @classmethod
     def from_directory(
         cls, directory: str | Path, *, precision: Precision = "int8"
-    ) -> "BundlePaths":
+    ) -> BundlePaths:
         root = Path(directory).expanduser().resolve()
         metadata = BundleMetadata.load(root / "bundle.json")
         if precision not in {"int8", "fp32"}:

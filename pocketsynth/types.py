@@ -11,6 +11,7 @@ from .audio import float_to_int16, write_wav
 from .diagnostics import RuntimeDiagnostics, TimingDiagnostics
 from .errors import ModelInferenceError, OptionalDependencyError
 
+
 @dataclass(frozen=True, slots=True)
 class AudioMarker:
     """A marker in synthesized audio, either resolved or unresolved."""

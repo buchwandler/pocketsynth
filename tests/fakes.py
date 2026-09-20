@@ -22,9 +22,11 @@ class FakePocketRuntime:
     metadata: Any = None
     _closed: bool = field(default=False, init=False)
     _infer_count: int = field(default=0, init=False)
+    _prepare_count: int = field(default=0, init=False)
 
     def prepare_voice(self, source: Any, *, sample_rate: int | None = None) -> PreparedVoice:
         """Return a deterministic fake PreparedVoice."""
+        self._prepare_count += 1
         if isinstance(source, PreparedVoice):
             return source
         return PreparedVoice(

@@ -68,7 +68,14 @@ def build_audio_job(
 
     Import AudioCompose lazily so package metadata/frontend tests do not need the optional runtime.
     """
-    from audiocompose import AudioBufferSource, AudioClip, AudioJob, LoudnessPolicy, OutputPolicy, Silence
+    from audiocompose import (
+        AudioBufferSource,
+        AudioClip,
+        AudioJob,
+        LoudnessPolicy,
+        OutputPolicy,
+        Silence,
+    )
 
     items: list[Any] = []
     rendered: list[RenderedPocketSpan] = []

@@ -1,7 +1,8 @@
 from __future__ import annotations
 
+from collections.abc import Mapping
 from dataclasses import dataclass
-from typing import Any, Literal, Mapping
+from typing import Any, Literal
 
 from utterplan import PlanSegment, UtterancePlan, normalize_language
 
@@ -87,12 +88,16 @@ def prepare_plan(
         spans: list[PreparedPocketSpan] = []
         group: list[PlanSegment] = []
 
-        def flush() -> None:
-            if not group:
+        def flush(
+            current_group: list[PlanSegment],
+            current_spans: list[PreparedPocketSpan],
+            current_unit: Any,
+        ) -> None:
+            if not current_group:
                 return
-            first, last = group[0], group[-1]
+            first, last = current_group[0], current_group[-1]
             warnings: list[str] = []
-            for segment in group:
+            for segment in current_group:
                 language = normalize_language(segment.language)
                 if language_policy == "strict" and language != expected:
                     raise UnsupportedPlanLanguageError(
@@ -109,12 +114,12 @@ def prepare_plan(
             voice_ref = _voice_ref(first)
             if voice_ref and voice_bindings is not None and voice_ref not in voice_bindings:
                 raise VoiceBindingError(f"No Pocket voice binding for {voice_ref!r}")
-            spans.append(
+            current_spans.append(
                 PreparedPocketSpan(
-                    id=f"{unit.id}:span-{len(spans):03d}",
+                    id=f"{current_unit.id}:span-{len(current_spans):03d}",
                     text=plan.texts.spoken[first.spoken_start:last.spoken_end],
                     language=first.language,
-                    segment_ids=tuple(s.id for s in group),
+                    segment_ids=tuple(s.id for s in current_group),
                     spoken_start=first.spoken_start,
                     spoken_end=last.spoken_end,
                     pause_before_seconds=float(first.pause_before.seconds),
@@ -123,15 +128,15 @@ def prepare_plan(
                     warnings=tuple(warnings),
                 )
             )
-            group.clear()
+            current_group.clear()
 
         for segment in unit_segments:
             if group and not _compatible(group[-1], segment):
-                flush()
+                flush(group, spans, unit)
             group.append(segment)
             if segment.pause_after.seconds > 0 or _unsupported(segment):
-                flush()
-        flush()
+                flush(group, spans, unit)
+        flush(group, spans, unit)
         prepared_units.append(
             PreparedPocketUnit(
                 plan_unit_id=unit.id,

@@ -5,6 +5,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
+from .asset_progress import AssetProgressCallback, adapt_asset_progress
 from .bundle import BundlePaths, Precision
 from .errors import (
     AssetCacheError,
@@ -88,21 +89,22 @@ def normalize_provider_request(
 
 def _map_error(exc: Exception, *, operation: str) -> Exception:
     name = type(exc).__name__
+    message = str(exc) or name
     if name in {"AssetNotFoundError", "NotInstalledError"}:
-        return BundleNotFoundError(str(exc))
+        return BundleNotFoundError(message)
     if name == "OfflineError":
-        return OfflineAssetError(str(exc))
+        return OfflineAssetError(message)
     if name in {"IntegrityError", "ManifestError", "UnsafePathError", "LockError"}:
-        return AssetCacheError(str(exc))
+        return AssetCacheError(message)
     if name == "CatalogError":
-        return CatalogUnavailableError(str(exc))
+        return CatalogUnavailableError(message)
     if name in {"RuntimeContractError", "CapabilityError", "UnsupportedSystemError"}:
-        return RuntimeCapabilityError(str(exc))
+        return RuntimeCapabilityError(message)
     if operation == "infer":
-        return ModelInferenceError("Pocket ONNX inference failed")
+        return ModelInferenceError(f"Pocket ONNX inference failed: {message}")
     if operation == "open":
-        return SessionCreationError("Could not open Pocket ONNX runtime")
-    return AssetDownloadError(str(exc)) if operation == "install" else AssetError(str(exc))
+        return SessionCreationError(f"Could not open Pocket ONNX runtime: {message}")
+    return AssetDownloadError(message) if operation == "install" else AssetError(message)
 
 
 def _call(operation: str, fn: Callable[[], Any]) -> Any:
@@ -156,7 +158,7 @@ def install_pretrained_bundle(
     offline: bool | None = None,
     refresh_catalog: bool = False,
     force_download: bool = False,
-    progress: Callable[[Any], None] | None = None,
+    progress: AssetProgressCallback | None = None,
 ) -> ResolvedPocketBundle:
     module = _onnxvoice()
     manager = module.OnnxVoice(cache_dir=cache_dir, offline=bool(offline))
@@ -168,7 +170,7 @@ def install_pretrained_bundle(
             quality=precision,
             refresh=refresh_catalog,
             force=force_download,
-            progress=progress,
+            progress=adapt_asset_progress(progress),
         ),
     )
     return installation_to_bundle_info(installation, ref=normalized)
@@ -207,7 +209,7 @@ def installation_to_bundle_info(installation: Any, *, ref: str | None = None) ->
     return ResolvedPocketBundle(
         ref=ref or getattr(installation, "ref", None),
         bundle_id=getattr(installation, "id", None),
-        path=Path(getattr(installation, "path")),
+        path=Path(installation.path),
         tokenizer_path=tokenizer_path,
         metadata_path=metadata_path,
         precision=(str(raw["selected_quality"]) if raw.get("selected_quality") else None),

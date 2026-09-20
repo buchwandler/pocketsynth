@@ -6,6 +6,7 @@ import os
 from pathlib import Path
 
 from _output import artefact_path
+
 from pocketsynth import PocketPipeline
 
 BUNDLE = os.environ.get("POCKETSYNTH_EXAMPLE_BUNDLE", "english_2026-04")
@@ -18,7 +19,11 @@ if not VOICE_RAW:
 
 voice_path = Path(VOICE_RAW)
 
-with PocketPipeline.from_pretrained(BUNDLE, precision="int8") as pipeline:
+with PocketPipeline.from_pretrained(
+    BUNDLE,
+    precision="int8",
+    offline=os.environ.get("POCKETSYNTH_EXAMPLE_OFFLINE") == "1",
+) as pipeline:
     narrator = pipeline.prepare_voice(voice_path)
     pipeline.set_default_voice(narrator)
 

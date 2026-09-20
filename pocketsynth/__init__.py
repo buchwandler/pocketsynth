@@ -11,14 +11,10 @@ except ImportError:
         __version__ = "0.0.0"
 
 from .asset_manager import BundleAssetManager
+from .asset_progress import AssetProgressCallback, AssetProgressEvent, ConsoleAssetProgress
 from .assets import PocketBundle
 from .bundle import BundleMetadata, BundlePaths
 from .config import GenerationConfig, PipelineConfig
-from .pipeline import PocketPipeline, PreparedAudioUnits
-from .runtime import PocketRuntime
-from .types import AudioChunk, AudioMarker, AudioResult, AudioUnitDescriptor, AudioUnitResult
-from .voice import PreparedVoice
-
 from .convenience import synthesize, synthesize_to_wav
 from .diagnostics import RuntimeDiagnostics, TimingDiagnostics
 from .errors import (
@@ -31,6 +27,10 @@ from .errors import (
     VoiceBindingError,
     VoicePromptError,
 )
+from .pipeline import PocketPipeline, PreparedAudioUnits
+from .runtime import PocketRuntime
+from .types import AudioChunk, AudioMarker, AudioResult, AudioUnitDescriptor, AudioUnitResult
+from .voice import PreparedVoice
 
 __all__ = [
     "AudioMarker",
@@ -39,6 +39,9 @@ __all__ = [
     "AudioUnitDescriptor",
     "AudioUnitResult",
     "BundleAssetManager",
+    "AssetProgressCallback",
+    "AssetProgressEvent",
+    "ConsoleAssetProgress",
     "BundleError",
     "BundleMetadata",
     "BundleNotFoundError",
