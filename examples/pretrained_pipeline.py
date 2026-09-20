@@ -13,9 +13,7 @@ BUNDLE = os.environ.get("POCKETSYNTH_EXAMPLE_BUNDLE", "english_2026-04")
 VOICE_RAW = os.environ.get("POCKETSYNTH_EXAMPLE_VOICE")
 
 if not VOICE_RAW:
-    raise SystemExit(
-        "Set POCKETSYNTH_EXAMPLE_VOICE to a mono 16-bit PCM reference WAV."
-    )
+    raise SystemExit("Set POCKETSYNTH_EXAMPLE_VOICE to a mono 16-bit PCM reference WAV.")
 
 voice_path = Path(VOICE_RAW)
 

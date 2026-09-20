@@ -10,7 +10,9 @@ def test_synthesize_cli_wires_generation_and_cache_options(tmp_path) -> None:
     context = MagicMock()
     context.__enter__.return_value = pipeline
     context.__exit__.return_value = False
-    with patch("pocketsynth.__main__.PocketPipeline.from_pretrained", return_value=context) as factory:
+    with patch(
+        "pocketsynth.__main__.PocketPipeline.from_pretrained", return_value=context
+    ) as factory:
         assert (
             main(
                 [

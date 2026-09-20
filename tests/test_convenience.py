@@ -24,6 +24,7 @@ def _make_result() -> AudioResult:
 
 # --- _save_wav_atomically ---
 
+
 def test_save_wav_atomically_creates_parent_directories(tmp_path):
     result = _make_result()
     dest = tmp_path / "sub" / "dir" / "test.wav"
@@ -47,6 +48,7 @@ def test_save_wav_atomically_is_atomic(tmp_path):
 
 
 # --- synthesize_to_wav ---
+
 
 def test_synthesize_to_wav_validates_text():
     with pytest.raises(TypeError, match="text must be a string"):
@@ -82,6 +84,7 @@ def test_synthesize_to_wav_wires_pipeline(mock_pipeline_cls, tmp_path):
 
 
 # --- synthesize ---
+
 
 def test_synthesize_validates_text():
     with pytest.raises(TypeError, match="text must be a string"):

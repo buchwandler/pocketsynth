@@ -15,14 +15,10 @@ bundle_dir_raw = os.environ.get("POCKETSYNTH_EXAMPLE_BUNDLE_DIR")
 voice_raw = os.environ.get("POCKETSYNTH_EXAMPLE_VOICE")
 
 if not bundle_dir_raw:
-    raise SystemExit(
-        "Set POCKETSYNTH_EXAMPLE_BUNDLE_DIR to a local Pocket ONNX bundle directory."
-    )
+    raise SystemExit("Set POCKETSYNTH_EXAMPLE_BUNDLE_DIR to a local Pocket ONNX bundle directory.")
 
 if not voice_raw:
-    raise SystemExit(
-        "Set POCKETSYNTH_EXAMPLE_VOICE to a mono 16-bit PCM reference WAV."
-    )
+    raise SystemExit("Set POCKETSYNTH_EXAMPLE_VOICE to a mono 16-bit PCM reference WAV.")
 
 bundle_dir = Path(bundle_dir_raw)
 voice_path = Path(voice_raw)

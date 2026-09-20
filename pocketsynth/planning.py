@@ -22,7 +22,9 @@ _LANGUAGE_MAP = {
 
 
 def planner_language(metadata: BundleMetadata) -> str:
-    return normalize_language(_LANGUAGE_MAP.get(metadata.language, metadata.language.split("_", 1)[0]))
+    return normalize_language(
+        _LANGUAGE_MAP.get(metadata.language, metadata.language.split("_", 1)[0])
+    )
 
 
 def planner_config_from_pocketsynth(

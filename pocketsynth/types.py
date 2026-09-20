@@ -15,12 +15,14 @@ from .errors import ModelInferenceError, OptionalDependencyError
 @dataclass(frozen=True, slots=True)
 class AudioMarker:
     """A marker in synthesized audio, either resolved or unresolved."""
+
     id: str
     status: Literal["resolved", "unresolved"]
     sample_offset: int | None = None
     seconds: float | None = None
     plan_unit_id: str | None = None
     reason: str | None = None
+
 
 @dataclass(slots=True)
 class AudioChunk:

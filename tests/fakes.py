@@ -35,6 +35,7 @@ class FakePocketRuntime:
             source=str(source) if source else None,
             bundle_id=self.bundle_id,
         )
+
     def infer(
         self,
         token_ids: list[int],

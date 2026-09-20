@@ -49,7 +49,9 @@ def _make_pipeline(tmp_path: Path) -> tuple[PocketPipeline, FakePocketRuntime]:
     pipeline = PocketPipeline(config, runtime=runtime)
     return pipeline, runtime
 
+
 # --- Pipeline lifecycle ---
+
 
 def test_pipeline_context_manager_closes_runtime(tmp_path):
     pipeline, runtime = _make_pipeline(tmp_path)
@@ -64,6 +66,7 @@ def test_pipeline_context_manager_closes_planner(tmp_path):
     pipeline._planner = planner
     pipeline.close()
     planner.close.assert_called_once_with()
+
 
 def test_pipeline_run_after_close_fails(tmp_path):
     pipeline, runtime = _make_pipeline(tmp_path)
@@ -178,6 +181,7 @@ def test_retain_unit_audio_contract(tmp_path):
 
 # --- Chunking ---
 
+
 def test_empty_or_whitespace_text_behavior(tmp_path):
     pipeline, runtime = _make_pipeline(tmp_path)
 
@@ -188,6 +192,7 @@ def test_empty_or_whitespace_text_behavior(tmp_path):
 
 
 # --- Audio ---
+
 
 def test_save_wav_creates_valid_mono_pcm16(tmp_path):
     from pocketsynth.types import AudioResult
@@ -230,6 +235,7 @@ def test_convenience_save_creates_parent_directories(tmp_path):
 
 # --- Diagnostics ---
 
+
 def test_diagnostics_include_bundle_and_provider_provenance(tmp_path):
     pipeline, runtime = _make_pipeline(tmp_path)
     voice = make_test_voice()
@@ -270,6 +276,7 @@ def test_timing_fields_are_consistent(tmp_path):
 
 # --- Prepared voice ---
 
+
 def test_prepared_voice_is_reused_without_reencoding(tmp_path):
     pipeline, runtime = _make_pipeline(tmp_path)
     voice = make_test_voice()
@@ -294,6 +301,7 @@ def test_prepared_voice_is_encoded_once_for_multiple_calls(tmp_path):
                     pipeline.run("Second sentence.")
     assert runtime._prepare_count == 1
 
+
 def test_prepared_voice_from_incompatible_runtime_is_rejected():
     from pocketsynth.voice import PreparedVoice
 
@@ -308,6 +316,7 @@ def test_prepared_voice_from_incompatible_runtime_is_rejected():
 
 
 # --- __call__ delegates to run ---
+
 
 def test_call_delegates_to_run(tmp_path):
     pipeline, runtime = _make_pipeline(tmp_path)

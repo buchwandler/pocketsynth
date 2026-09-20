@@ -16,6 +16,7 @@ def test_provider_default_is_cpu():
     assert providers == "CPUExecutionProvider"
     assert options is None
 
+
 def test_runtime_error_mapping_preserves_cause():
     class InferenceFailure(Exception):
         pass

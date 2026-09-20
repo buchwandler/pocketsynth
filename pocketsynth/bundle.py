@@ -48,9 +48,7 @@ class BundleMetadata:
         }
         missing = sorted(required - set(raw))
         if missing:
-            raise UnsupportedBundleError(
-                f"Pocket bundle metadata is missing: {', '.join(missing)}"
-            )
+            raise UnsupportedBundleError(f"Pocket bundle metadata is missing: {', '.join(missing)}")
         return cls(
             path=source.resolve(),
             bundle_name=str(raw["bundle_name"]),
@@ -62,7 +60,9 @@ class BundleMetadata:
             tokenizer_file=str(raw["tokenizer_file"]),
             bos_before_voice_file=str(raw["bos_before_voice_file"]),
             remove_semicolons=bool(raw.get("remove_semicolons", False)),
-            pad_with_spaces_for_short_inputs=bool(raw.get("pad_with_spaces_for_short_inputs", False)),
+            pad_with_spaces_for_short_inputs=bool(
+                raw.get("pad_with_spaces_for_short_inputs", False)
+            ),
             model_recommended_frames_after_eos=(
                 int(raw["model_recommended_frames_after_eos"])
                 if raw.get("model_recommended_frames_after_eos") is not None
@@ -91,9 +91,7 @@ class BundlePaths:
     precision: Precision
 
     @classmethod
-    def from_directory(
-        cls, directory: str | Path, *, precision: Precision = "int8"
-    ) -> BundlePaths:
+    def from_directory(cls, directory: str | Path, *, precision: Precision = "int8") -> BundlePaths:
         root = Path(directory).expanduser().resolve()
         metadata = BundleMetadata.load(root / "bundle.json")
         if precision not in {"int8", "fp32"}:

@@ -15,9 +15,7 @@ VOICE_RAW = os.environ.get("POCKETSYNTH_EXAMPLE_VOICE")
 TEXT = "This sentence was planned, saved to disk, reloaded, and then rendered."
 
 if not VOICE_RAW:
-    raise SystemExit(
-        "Set POCKETSYNTH_EXAMPLE_VOICE to a mono 16-bit PCM reference WAV."
-    )
+    raise SystemExit("Set POCKETSYNTH_EXAMPLE_VOICE to a mono 16-bit PCM reference WAV.")
 
 voice_path = Path(VOICE_RAW)
 

@@ -42,7 +42,9 @@ class BundleAssetManager:
             cache_dir=self.cache_dir, catalog_sources=sources, offline=self.offline
         )
 
-    def list_bundles(self, *, language: str | None = None, refresh: bool = False) -> tuple[Any, ...]:
+    def list_bundles(
+        self, *, language: str | None = None, refresh: bool = False
+    ) -> tuple[Any, ...]:
         return tuple(
             self._manager().list(
                 "pocket", language=language, refresh=refresh, progress=self.progress

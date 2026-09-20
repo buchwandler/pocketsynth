@@ -45,6 +45,10 @@ def test_progress_adapter_maps_upstream_fields_and_phase() -> None:
 def test_console_progress_is_concise() -> None:
     stream = StringIO()
     render = ConsoleAssetProgress(stream)
-    render(AssetProgressEvent("install", "artifact_installed", artifact="model.onnx", completed=1, total=2))
+    render(
+        AssetProgressEvent(
+            "install", "artifact_installed", artifact="model.onnx", completed=1, total=2
+        )
+    )
 
     assert stream.getvalue() == "[install] artifact_installed model.onnx 1/2\n"

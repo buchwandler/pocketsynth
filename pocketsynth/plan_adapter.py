@@ -117,7 +117,7 @@ def prepare_plan(
             current_spans.append(
                 PreparedPocketSpan(
                     id=f"{current_unit.id}:span-{len(current_spans):03d}",
-                    text=plan.texts.spoken[first.spoken_start:last.spoken_end],
+                    text=plan.texts.spoken[first.spoken_start : last.spoken_end],
                     language=first.language,
                     segment_ids=tuple(s.id for s in current_group),
                     spoken_start=first.spoken_start,

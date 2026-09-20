@@ -49,7 +49,7 @@ class PreparedAudioUnits:
             AudioUnitDescriptor(
                 index=u.index,
                 unit_kind=u.kind,
-                text=plan.texts.spoken[u.spoken_start:u.spoken_end],
+                text=plan.texts.spoken[u.spoken_start : u.spoken_end],
                 char_start=u.spoken_start,
                 char_end=u.spoken_end,
                 plan_unit_id=u.plan_unit_id,
@@ -74,7 +74,9 @@ class PreparedAudioUnits:
                 )
                 if span.voice_ref and span.voice_ref not in self.voice_bindings:
                     raise VoiceBindingError(f"No Pocket voice binding for {span.voice_ref!r}")
-                before = silence_samples(self.pipeline.runtime.sample_rate, span.pause_before_seconds)
+                before = silence_samples(
+                    self.pipeline.runtime.sample_rate, span.pause_before_seconds
+                )
                 if before:
                     parts.append(np.zeros(before, dtype=np.float32))
                 rendered = render_span(
@@ -90,7 +92,11 @@ class PreparedAudioUnits:
                 after = silence_samples(self.pipeline.runtime.sample_rate, span.pause_after_seconds)
                 if after:
                     parts.append(np.zeros(after, dtype=np.float32))
-            audio = np.concatenate(parts).astype(np.float32, copy=False) if parts else np.zeros(0, dtype=np.float32)
+            audio = (
+                np.concatenate(parts).astype(np.float32, copy=False)
+                if parts
+                else np.zeros(0, dtype=np.float32)
+            )
             yield AudioUnitResult(
                 descriptor=by_index[unit.index],
                 audio=audio,
@@ -118,7 +124,9 @@ class PocketPipeline:
         self._last_planning_ms: float | None = None
         self._default_voice: PreparedVoice | None = None
         self._bundle_metadata = (
-            runtime.metadata if runtime is not None else BundleMetadata.load(config.bundle_dir / "bundle.json")
+            runtime.metadata
+            if runtime is not None
+            else BundleMetadata.load(config.bundle_dir / "bundle.json")
         )
 
     @classmethod
@@ -302,7 +310,9 @@ class PocketPipeline:
         default_voice = self._resolve_voice(voice)
         bindings: dict[str, PreparedVoice] = {}
         for name, value in dict(voice_bindings or {}).items():
-            bindings[name] = value if isinstance(value, PreparedVoice) else self.prepare_voice(value)
+            bindings[name] = (
+                value if isinstance(value, PreparedVoice) else self.prepare_voice(value)
+            )
         units = adapt_plan(
             plan,
             bundle_language=planner_language(self._bundle_metadata),
@@ -381,16 +391,20 @@ class PocketPipeline:
         compose_started = time.perf_counter()
         composition = Composer().compose(job)
         composition_ms = (time.perf_counter() - compose_started) * 1000
-        chunks = [
-            AudioChunk(
-                sample_rate=item.sample_rate,
-                audio=item.audio,
-                token_ids=item.token_ids,
-                warnings=item.span.warnings,
-                metadata=dict(item.metadata),
-            )
-            for item in rendered
-        ] if self.config.retain_unit_audio else []
+        chunks = (
+            [
+                AudioChunk(
+                    sample_rate=item.sample_rate,
+                    audio=item.audio,
+                    token_ids=item.token_ids,
+                    warnings=item.span.warnings,
+                    metadata=dict(item.metadata),
+                )
+                for item in rendered
+            ]
+            if self.config.retain_unit_audio
+            else []
+        )
         diagnostics = self.runtime.diagnostics if self.config.return_diagnostics else None
         if diagnostics is not None:
             diagnostics = replace(
@@ -399,12 +413,16 @@ class PocketPipeline:
                 utterplan_producer=dict(plan.producer),
                 utterplan_schema_version=plan.schema_version,
             )
-        timing = TimingDiagnostics(
-            planning_ms=self._last_planning_ms,
-            inference_ms=inference_ms,
-            composition_ms=composition_ms,
-            total_ms=(time.perf_counter() - started) * 1000,
-        ) if self.config.return_diagnostics else None
+        timing = (
+            TimingDiagnostics(
+                planning_ms=self._last_planning_ms,
+                inference_ms=inference_ms,
+                composition_ms=composition_ms,
+                total_ms=(time.perf_counter() - started) * 1000,
+            )
+            if self.config.return_diagnostics
+            else None
+        )
         return AudioResult(
             audio=composition.audio,
             sample_rate=composition.sample_rate,
@@ -413,7 +431,8 @@ class PocketPipeline:
             plan=plan,
             plan_id=plan.plan_id,
             chunks=chunks,
-            warnings=tuple(plan.warnings) + tuple(w for item in rendered for w in item.span.warnings),
+            warnings=tuple(plan.warnings)
+            + tuple(w for item in rendered for w in item.span.warnings),
             diagnostics=diagnostics,
             timing=timing,
             metadata={
@@ -448,9 +467,7 @@ class PocketPipeline:
         voice_bindings: Mapping[str, Any] | None = None,
     ) -> Iterator[AudioUnitResult]:
         plan = self.plan(text, unit="sentence")
-        yield from self.prepare_plan(
-            plan, voice=voice, voice_bindings=voice_bindings
-        ).render()
+        yield from self.prepare_plan(plan, voice=voice, voice_bindings=voice_bindings).render()
 
     def _resolve_voice(self, voice: PreparedVoice | Any | None) -> PreparedVoice:
         if voice is None:

@@ -20,7 +20,9 @@ class PreparedVoice:
     runtime_fingerprint: str | None = None
     metadata: dict[str, Any] = field(default_factory=dict)
 
-    def validate_compatible(self, *, bundle_id: str | None = None, sample_rate: int | None = None) -> None:
+    def validate_compatible(
+        self, *, bundle_id: str | None = None, sample_rate: int | None = None
+    ) -> None:
         """Check that this voice is compatible with the target runtime."""
         if sample_rate is not None and self.sample_rate != sample_rate:
             raise VoicePromptError(
@@ -30,6 +32,7 @@ class PreparedVoice:
             raise VoicePromptError(
                 f"PreparedVoice bundle {self.bundle_id!r} does not match target {bundle_id!r}"
             )
+
 
 def _read_pcm_wav(path: str | Path) -> tuple[np.ndarray, int]:
     source = Path(path)
@@ -53,6 +56,7 @@ def _read_pcm_wav(path: str | Path) -> tuple[np.ndarray, int]:
     audio = np.frombuffer(frames, dtype="<i2").astype(np.float32) / 32768.0
     return audio, sample_rate
 
+
 def _resample_linear(audio: np.ndarray, source_rate: int, target_rate: int) -> np.ndarray:
     audio = as_float32_mono(audio)
     if source_rate == target_rate or not audio.size:
@@ -63,7 +67,9 @@ def _resample_linear(audio: np.ndarray, source_rate: int, target_rate: int) -> n
     return np.interp(new_x, old_x, audio).astype(np.float32)
 
 
-def prepare_voice(runtime: Any, source: str | Path | tuple[np.ndarray, int] | PreparedVoice, *, sample_rate: int) -> PreparedVoice:
+def prepare_voice(
+    runtime: Any, source: str | Path | tuple[np.ndarray, int] | PreparedVoice, *, sample_rate: int
+) -> PreparedVoice:
     if isinstance(source, PreparedVoice):
         return source
     if isinstance(source, tuple):

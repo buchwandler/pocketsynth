@@ -197,7 +197,9 @@ def open_installed_bundle(
     )
 
 
-def installation_to_bundle_info(installation: Any, *, ref: str | None = None) -> ResolvedPocketBundle:
+def installation_to_bundle_info(
+    installation: Any, *, ref: str | None = None
+) -> ResolvedPocketBundle:
     try:
         metadata_path = Path(installation.artifact("bundle_metadata").path)
         tokenizer_path = Path(installation.artifact("tokenizer").path)

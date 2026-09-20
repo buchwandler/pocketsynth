@@ -81,7 +81,11 @@ def build_audio_job(
     rendered: list[RenderedPocketSpan] = []
     for unit in prepared_units:
         for span in unit.spans:
-            voice = voice_bindings.get(span.voice_ref, default_voice) if span.voice_ref else default_voice
+            voice = (
+                voice_bindings.get(span.voice_ref, default_voice)
+                if span.voice_ref
+                else default_voice
+            )
             if span.pause_before_seconds > 0:
                 items.append(
                     Silence(
@@ -90,9 +94,7 @@ def build_audio_job(
                         {"pocketsynth.span_id": span.id, "pocketsynth.position": "before"},
                     )
                 )
-            result = render_span(
-                span, runtime=runtime, voice=voice, generation=generation
-            )
+            result = render_span(span, runtime=runtime, voice=voice, generation=generation)
             rendered.append(result)
             if result.audio.size:
                 items.append(

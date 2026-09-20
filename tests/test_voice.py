@@ -22,6 +22,7 @@ def test_read_wav_and_resample(tmp_path):
     assert resampled.ndim == 1
     assert len(resampled) == 6
 
+
 @pytest.mark.parametrize("channels,width", [(2, 2), (1, 1)])
 def test_read_wav_reports_actual_format(tmp_path: Path, channels: int, width: int):
     path = tmp_path / "invalid-voice.wav"

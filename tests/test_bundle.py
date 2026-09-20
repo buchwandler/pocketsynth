@@ -18,10 +18,16 @@ def _bundle(tmp_path: Path) -> Path:
     }
     (tmp_path / "bundle.json").write_text(json.dumps(data))
     for name in (
-        "tokenizer.model", "bos_before_voice.npy",
-        "flow_lm_main_int8.onnx", "flow_lm_flow_int8.onnx", "mimi_decoder_int8.onnx",
-        "flow_lm_main.onnx", "flow_lm_flow.onnx", "mimi_decoder.onnx",
-        "mimi_encoder.onnx", "text_conditioner.onnx",
+        "tokenizer.model",
+        "bos_before_voice.npy",
+        "flow_lm_main_int8.onnx",
+        "flow_lm_flow_int8.onnx",
+        "mimi_decoder_int8.onnx",
+        "flow_lm_main.onnx",
+        "flow_lm_flow.onnx",
+        "mimi_decoder.onnx",
+        "mimi_encoder.onnx",
+        "text_conditioner.onnx",
     ):
         (tmp_path / name).write_bytes(b"x")
     return tmp_path

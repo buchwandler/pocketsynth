@@ -98,7 +98,11 @@ def main(argv: list[str] | None = None) -> int:
         name, kind, needs_plan = example
         if kind == "local":
             if not include_local or not bundle_dir:
-                reason = "local mode disabled" if not include_local else "POCKETSYNTH_EXAMPLE_BUNDLE_DIR not set"
+                reason = (
+                    "local mode disabled"
+                    if not include_local
+                    else "POCKETSYNTH_EXAMPLE_BUNDLE_DIR not set"
+                )
                 print(f"SKIP {name} ({reason})")
                 continue
         elif not include_managed:
