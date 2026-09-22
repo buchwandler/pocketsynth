@@ -1,74 +1,82 @@
 # pocketsynth
 
-`pocketsynth` is an UtterPlan-aware Python runtime for Pocket TTS ONNX bundles. It provides the application-facing path from text and a reference voice to a WAV file while delegating model assets and graph execution to OnnxVoice.
+`pocketsynth` is an UtterPlan-aware Python runtime for Pocket TTS ONNX bundles. It turns text and a reference voice WAV into a WAV file while delegating asset management and model execution to OnnxVoice.
 
-## Status
+## Status and installation
 
-Pocket support is implemented across PocketSynth and OnnxVoice. Release readiness depends on the OnnxVoice Pocket catalog contract and real v2 runtime parity tests.
-
-The minimum compatible dependency is `onnxvoice>=0.2,<0.3`. PocketSynth does not duplicate OnnxVoice catalog, download, cache, ORT session, Mimi, Flow-LM, or decoder logic.
-
-## Installation
+PocketSynth requires the Pocket-capable OnnxVoice release:
 
 ```bash
-pip install "pocketsynth[cpu]"
+python -m pip install -e '.[cpu]'
 ```
 
-## First WAV, managed bundle
+The package declares `onnxvoice>=0.2,<0.3` and `utterplan>=0.2.0,<0.3`. OnnxVoice owns the Pocket catalog, downloads, cache, ONNX Runtime sessions, Mimi, Flow-LM, and decoding. PocketSynth does not duplicate those responsibilities.
 
-Provide a mono 16-bit PCM reference WAV:
+## Quickstart
+
+Provide a mono, 16-bit PCM reference voice WAV. The managed bundle is downloaded and cached by OnnxVoice:
+
+```bash
+python examples/quickstart.py --voice reference.wav --output hello.wav
+```
+
+The equivalent Python API is:
 
 ```python
 from pocketsynth import synthesize_to_wav
 
-path = synthesize_to_wav(
-    "Hello from PocketSynth.",
+synthesize_to_wav(
+    "Hello from Pocket.",
     "hello.wav",
     bundle="english_2026-04",
     voice="reference.wav",
 )
-print(path)
 ```
 
-The same flow is available from the CLI:
+The CLI provides the same path:
 
 ```bash
 pocketsynth synthesize \
   --bundle english_2026-04 \
   --voice reference.wav \
   --output hello-cli.wav \
-  "Hello world."
+  "Hello from Pocket."
 ```
 
-Managed assets are cached by OnnxVoice. Use `--cache-dir` to select a cache and `--offline` for an explicitly cached second run.
+Use `--cache-dir` to select the managed cache. A cached second run can use `--offline`. `--refresh-catalog` and `--force-download` make asset selection reproducible when refreshing or replacing cached assets.
 
-## First WAV, local bundle
+## Local bundle
+
+A local bundle avoids catalog resolution and network access. Use the semantic bundle directory supplied by OnnxVoice:
+
+```bash
+python examples/local_bundle.py \
+  --bundle-dir ./onnx/english_2026-04 \
+  --voice reference.wav \
+  --output hello-local.wav
+```
+
+The Python form is:
 
 ```python
 from pocketsynth import PocketPipeline
 
-with PocketPipeline.load("./onnx/english_2026-04", precision="int8") as tts:
+with PocketPipeline.load("./onnx/english_2026-04") as tts:
     tts.set_default_voice("reference.wav")
     tts("Hello from Pocket.").save_wav("hello-local.wav")
 ```
 
-```bash
-pocketsynth synthesize \
-  --bundle-dir ./onnx/english_2026-04 \
-  --voice reference.wav \
-  --output hello-local-cli.wav \
-  "Hello world."
-```
+PocketSynth locates the high-level bundle metadata and component files, then asks OnnxVoice to open the runtime. It does not open ONNX sessions directly.
 
-Local opening is network-free and requires the concrete bundle files expected by OnnxVoice.
+## Reference voice policy
 
-## Reference WAV policy
-
-The application boundary accepts mono PCM WAV with 16-bit samples. Invalid prompts report the actual channel count, sample width, sample rate, and compression. Other sample rates are resampled to the bundle rate by PocketSynth.
+The application boundary accepts a mono PCM WAV with 16-bit samples. Invalid prompts report the actual channels, sample width, sample rate, and compression. Valid prompts at another sample rate are resampled to the bundle rate.
 
 ## Reusing a voice
 
 ```python
+from pocketsynth import PocketPipeline
+
 with PocketPipeline.from_pretrained("english_2026-04") as tts:
     narrator = tts.prepare_voice("narrator.wav")
     tts.set_default_voice(narrator)
@@ -76,30 +84,19 @@ with PocketPipeline.from_pretrained("english_2026-04") as tts:
     second = tts("Second sentence.")
 ```
 
-The Mimi encoder runs once for `prepare_voice()`. The resulting `PreparedVoice` is reusable without exposing the internal OnnxVoice state shape.
+The voice encoder runs once during `prepare_voice()`. `PreparedVoice` hides the OnnxVoice state representation and can be reused for later calls on the same bundle.
 
-## Planning and ownership
+## Ownership
 
-UtterPlan owns semantic units. PocketSynth applies Pocket text normalization, SentencePiece tokenization, token-limit subdivision, voice bindings, generation settings, and composition. OnnxVoice owns catalog resolution, downloads, cache integrity, provider sessions, bundle graph contracts, voice encoding, inference, and decoding.
+UtterPlan owns semantic units. PocketSynth owns text preparation, SentencePiece tokenization, token-limit subdivision, voice bindings, generation settings, composition, and WAV output. OnnxVoice owns catalog resolution, downloads, cache integrity, provider sessions, bundle graph contracts, voice encoding, inference, and decoding.
 
 ```text
-UtterPlan -> PocketSynth frontend/policy -> OnnxVoice Pocket runtime -> AudioCompose -> WAV
+UtterPlan -> PocketSynth policy -> OnnxVoice Pocket runtime -> AudioCompose -> WAV
 ```
-
-Use `tts.plan()` and `tts.render_plan()` for explicit plan-first workflows. `examples/basic.py` remains the plan-first managed example.
 
 ## Examples
 
-Start with the success path in [`examples/README.md`](examples/README.md):
-
-```bash
-POCKETSYNTH_EXAMPLE_VOICE=/path/to/reference.wav python examples/first_wav.py
-POCKETSYNTH_EXAMPLE_BUNDLE_DIR=/path/to/bundle \
-POCKETSYNTH_EXAMPLE_VOICE=/path/to/reference.wav \
-python examples/first_wav_local.py
-```
-
-The runner avoids managed downloads by default:
+See [`examples/README.md`](examples/README.md). The runner avoids managed downloads unless requested:
 
 ```bash
 python examples/run_all.py --list
@@ -108,26 +105,18 @@ python examples/run_all.py --include-network
 python examples/run_all.py --include-network --offline
 ```
 
-Validate a generated container without an additional audio library:
+Set `POCKETSYNTH_EXAMPLE_VOICE` and, for local examples, `POCKETSYNTH_EXAMPLE_BUNDLE_DIR` as described in the examples documentation.
 
-```bash
-python - <<'PY'
-import wave
-with wave.open("example-artefacts/first_wav.wav", "rb") as f:
-    print(f.getframerate(), f.getnframes())
-PY
-```
+## Diagnostics and tests
 
-## Diagnostics
+The check command reports actionable dependency, provider, catalog or local bundle, and reference voice checks:
 
 ```bash
 pocketsynth check --provider CPUExecutionProvider
 pocketsynth check --bundle-dir ./onnx/english_2026-04 --voice reference.wav
 ```
 
-The check command reports OnnxVoice import/version, available ORT providers, local bundle artifacts or managed catalog resolution, and reference WAV validity.
-
-## Tests
+Run the package checks with:
 
 ```bash
 pytest -q
@@ -143,7 +132,7 @@ export POCKETSYNTH_TEST_VOICE_WAV=/path/to/reference.wav
 pytest -q -m integration tests/integration/test_real_local_wav.py
 ```
 
-The managed test additionally requires network access and uses `POCKETSYNTH_TEST_BUNDLE` when set.
+The managed integration test additionally requires network access and uses `POCKETSYNTH_TEST_BUNDLE` when set. It verifies a cached rerun with explicit offline mode.
 
 ## Current limitations
 

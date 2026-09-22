@@ -9,6 +9,7 @@ def test_synthesize_cli_wires_generation_and_cache_options(tmp_path) -> None:
     pipeline = MagicMock()
     context = MagicMock()
     context.__enter__.return_value = pipeline
+    pipeline.return_value = MagicMock(sample_rate=24_000, duration_seconds=1.0)
     context.__exit__.return_value = False
     with patch(
         "pocketsynth.__main__.PocketPipeline.from_pretrained", return_value=context
@@ -30,6 +31,9 @@ def test_synthesize_cli_wires_generation_and_cache_options(tmp_path) -> None:
                     "--max-frames",
                     "50",
                     "--offline",
+                    "--refresh-catalog",
+                    "--force-download",
+                    "--no-normalize-audio",
                     "--cache-dir",
                     str(tmp_path / "cache"),
                     "--provider",
@@ -42,13 +46,15 @@ def test_synthesize_cli_wires_generation_and_cache_options(tmp_path) -> None:
 
     kwargs = factory.call_args.kwargs
     assert kwargs["offline"] is True
+    assert kwargs["refresh_catalog"] is True
+    assert kwargs["force_download"] is True
     assert kwargs["cache_dir"] == tmp_path / "cache"
     assert kwargs["providers"] == "CPUExecutionProvider"
     assert kwargs["generation"].temperature == 0.4
     assert kwargs["generation"].lsd_steps == 3
     assert kwargs["generation"].max_frames == 50
-    context.set_default_voice.assert_called_once()
-    context.run.assert_called_once_with("Hello")
+    pipeline.set_default_voice.assert_called_once()
+    pipeline.assert_called_once_with("Hello")
 
 
 def test_check_reports_available_provider(capsys) -> None:

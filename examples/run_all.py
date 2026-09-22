@@ -15,13 +15,15 @@ _PROJECT_ROOT = _EXAMPLES_DIR.parent
 _ARTEFACT_DIR = _PROJECT_ROOT / "example-artefacts"
 
 EXAMPLES = (
-    ("first_wav.py", "managed", False),
-    ("first_wav_local.py", "local", False),
+    ("quickstart.py", "managed", False),
+    ("local_bundle.py", "local", False),
     ("basic.py", "managed", True),
     ("pretrained_pipeline.py", "managed", False),
     ("plan_roundtrip.py", "managed", True),
     ("basic_local.py", "local", True),
     ("download_and_synthesize.py", "managed", False),
+    ("first_wav.py", "managed", False),
+    ("first_wav_local.py", "local", False),
 )
 
 
@@ -53,11 +55,32 @@ def _run_example(name: str, *, env: dict[str, str]) -> Path:
     script = _EXAMPLES_DIR / name
     output_dir = _ARTEFACT_DIR / f"examples__{name.replace('.py', '')}"
     output_dir.mkdir(parents=True, exist_ok=True)
+    command = [sys.executable, str(script)]
+    if name == "quickstart.py":
+        command.extend(
+            [
+                "--voice",
+                env["POCKETSYNTH_EXAMPLE_VOICE"],
+                "--output",
+                str(output_dir / "quickstart.wav"),
+            ]
+        )
+    elif name == "local_bundle.py":
+        command.extend(
+            [
+                "--bundle-dir",
+                env["POCKETSYNTH_EXAMPLE_BUNDLE_DIR"],
+                "--voice",
+                env["POCKETSYNTH_EXAMPLE_VOICE"],
+                "--output",
+                str(output_dir / "local_bundle.wav"),
+            ]
+        )
     run_env = dict(os.environ)
     run_env.update(env)
     run_env["POCKETSYNTH_EXAMPLE_OUTPUT_DIR"] = str(output_dir)
     result = subprocess.run(
-        [sys.executable, str(script)],
+        command,
         cwd=str(_EXAMPLES_DIR),
         env=run_env,
         capture_output=True,

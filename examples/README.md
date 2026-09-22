@@ -1,58 +1,70 @@
 # PocketSynth examples
 
-These examples are ordered from the smallest successful first-WAV path to the more explicit planning APIs.
+These examples start with the shortest managed and local paths, then show planning and progress APIs.
 
 ## Prerequisites
 
+Install the Pocket-capable runtime:
+
 ```bash
-pip install -e ".[cpu]"
+python -m pip install -e '.[cpu]'
 ```
 
-Set a mono 16-bit PCM reference WAV for examples that synthesize audio:
+Every synthesis example needs a mono, 16-bit PCM reference WAV:
 
 ```bash
 export POCKETSYNTH_EXAMPLE_VOICE=/path/to/reference.wav
 ```
 
-Managed examples use the OnnxVoice catalog and default to `english_2026-04`. Local examples additionally need:
+Managed examples use the `english_2026-04` catalog bundle by default. Local examples also need:
 
 ```bash
 export POCKETSYNTH_EXAMPLE_BUNDLE_DIR=/path/to/onnx/english_2026-04
 ```
 
-## 1. First WAV, managed
+## 1. Quickstart
 
-The smallest managed path is `first_wav.py`:
+The canonical first smoke uses the managed catalog and does not require manual model-file downloads:
 
 ```bash
-python examples/first_wav.py
+python examples/quickstart.py \
+  --voice /path/to/reference.wav \
+  --output hello.wav
 ```
 
-It writes `example-artefacts/first_wav.wav`.
+Use `--cache-dir` to select the OnnxVoice cache. A cached rerun can add `--offline`.
 
-For visible download progress, use:
+The local equivalent opens a bundle directory through OnnxVoice:
+
+```bash
+python examples/local_bundle.py \
+  --bundle-dir /path/to/onnx/english_2026-04 \
+  --voice /path/to/reference.wav \
+  --output hello-local.wav
+```
+
+`quickstart.py` and `local_bundle.py` select semantic bundle references and directories only. They do not select ONNX filenames.
+
+## 2. Basic plan-first flow
+
+`basic.py` demonstrates planning, saving, and rendering a managed bundle. `basic_local.py` is the corresponding network-free path.
+
+```bash
+python examples/basic.py
+python examples/basic_local.py
+```
+
+## 3. Managed download progress
+
+`download_and_synthesize.py` uses the stable PocketSynth progress callback and console renderer:
 
 ```bash
 python examples/download_and_synthesize.py
 ```
 
-## 2. First WAV, local
-
-`first_wav_local.py` skips catalog resolution and plan persistence:
-
-```bash
-python examples/first_wav_local.py
-```
-
-A local failure points at the bundle or runtime. If local succeeds but managed fails, inspect catalog and installation behavior.
-
-## 3. Explicit UtterPlan example
-
-`basic.py` demonstrates planning, saving, and rendering a managed bundle. `basic_local.py` is the corresponding network-free path.
-
 ## 4. Prepared voice reuse
 
-`pretrained_pipeline.py` prepares one voice and renders two sentences without re-encoding the voice:
+`pretrained_pipeline.py` prepares one voice and renders multiple sentences without re-encoding it:
 
 ```bash
 python examples/pretrained_pipeline.py
@@ -60,11 +72,15 @@ python examples/pretrained_pipeline.py
 
 ## 5. Plan round-trip
 
-`plan_roundtrip.py` saves an UtterancePlan, reloads it, and renders the reloaded plan.
+`plan_roundtrip.py` saves an UtterancePlan, reloads it, and renders the reloaded plan:
+
+```bash
+python examples/plan_roundtrip.py
+```
 
 ## 6. Run all examples
 
-The runner avoids surprise multi-hundred-megabyte downloads by default:
+The runner avoids surprise managed downloads by default:
 
 ```bash
 python examples/run_all.py --list
@@ -75,20 +91,19 @@ python examples/run_all.py --include-network --offline
 python examples/run_all.py --include-network --fail-fast
 ```
 
-Managed execution requires `--include-network`, except when using `--offline` with assets already cached by OnnxVoice. Local execution requires `POCKETSYNTH_EXAMPLE_BUNDLE_DIR`.
+Managed execution requires `--include-network`, except for `--offline` runs with assets already cached by OnnxVoice. Local execution requires `POCKETSYNTH_EXAMPLE_BUNDLE_DIR`. The runner validates generated WAV containers as mono, 16-bit PCM with positive, non-silent audio, and validates saved UtterPlan files.
 
-The runner validates every generated WAV as mono 16-bit PCM with a positive frame count and non-silent samples. It validates UtterPlan files with UtterPlan itself.
+## WAV verification
 
-## WAV container verification
-
-No additional audio library is needed to inspect the container:
+No additional audio library is needed to inspect a generated container:
 
 ```bash
 python - <<'PY'
 import wave
-with wave.open("example-artefacts/first_wav.wav", "rb") as f:
-    print(f.getframerate(), f.getnframes())
+
+with wave.open("hello.wav", "rb") as stream:
+    print(stream.getframerate(), stream.getnframes())
 PY
 ```
 
-All scripts honor `POCKETSYNTH_EXAMPLE_OUTPUT_DIR`. Managed scripts honor `POCKETSYNTH_EXAMPLE_OFFLINE=1`.
+All scripts honor `POCKETSYNTH_EXAMPLE_OUTPUT_DIR`. Managed scripts honor `POCKETSYNTH_EXAMPLE_OFFLINE=1` where applicable.

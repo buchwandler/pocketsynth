@@ -68,7 +68,7 @@ def test_synthesize_to_wav_wires_pipeline(mock_pipeline_cls, tmp_path):
     mock_pipeline_cls.from_pretrained.return_value.__exit__ = MagicMock(return_value=False)
 
     mock_result = _make_result()
-    mock_pipeline.run.return_value = mock_result
+    mock_pipeline.return_value = mock_result
 
     output = tmp_path / "test.wav"
     result = synthesize_to_wav(
@@ -80,7 +80,7 @@ def test_synthesize_to_wav_wires_pipeline(mock_pipeline_cls, tmp_path):
 
     assert result == output
     mock_pipeline.set_default_voice.assert_called_once_with("test.wav")
-    mock_pipeline.run.assert_called_once_with("Hello")
+    mock_pipeline.assert_called_once_with("Hello")
 
 
 # --- synthesize ---
@@ -104,7 +104,7 @@ def test_synthesize_returns_audio_result(mock_pipeline_cls):
     mock_pipeline_cls.from_pretrained.return_value.__exit__ = MagicMock(return_value=False)
 
     expected = _make_result()
-    mock_pipeline.run.return_value = expected
+    mock_pipeline.return_value = expected
 
     result = synthesize("Hello", bundle="test-bundle", voice="test.wav")
     assert result is expected

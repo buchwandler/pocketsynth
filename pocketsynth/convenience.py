@@ -135,7 +135,7 @@ def synthesize(
         progress=progress,
     ) as pipeline:
         pipeline.set_default_voice(voice)
-        return pipeline.run(text)
+        return pipeline(text)
 
 
 def synthesize_to_wav(
@@ -238,7 +238,7 @@ def synthesize_to_wav(
         progress=progress,
     ) as pipeline:
         pipeline.set_default_voice(voice)
-        result = pipeline.run(text)
+        result = pipeline(text)
         _save_wav_atomically(result, destination)
 
     return destination

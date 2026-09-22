@@ -293,8 +293,13 @@ class PocketPipeline:
         return result
 
     def prepare_voice(self, source: Any) -> PreparedVoice:
-        voice = self.runtime.prepare_voice(source)
-        return voice
+        if isinstance(source, PreparedVoice):
+            source.validate_compatible(
+                bundle_id=self.runtime.bundle_id,
+                sample_rate=self.runtime.sample_rate,
+            )
+            return source
+        return self.runtime.prepare_voice(source)
 
     def set_default_voice(self, source: Any) -> PreparedVoice:
         self._default_voice = self.prepare_voice(source)
