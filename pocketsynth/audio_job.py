@@ -2,9 +2,12 @@ from __future__ import annotations
 
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 import numpy as np
+
+if TYPE_CHECKING:
+    from audiocompose import AudioJob
 
 from .audio import postprocess_audio
 from .config import GenerationConfig
@@ -63,7 +66,7 @@ def build_audio_job(
     voice_bindings: Mapping[str, PreparedVoice],
     generation: GenerationConfig,
     producer_version: str,
-):
+) -> tuple[AudioJob, tuple[RenderedPocketSpan, ...]]:
     """Create an AudioCompose job plus rendered-span metadata.
 
     Import AudioCompose lazily so package metadata/frontend tests do not need the optional runtime.

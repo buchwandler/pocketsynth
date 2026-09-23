@@ -10,7 +10,7 @@ PocketSynth requires the Pocket-capable OnnxVoice release:
 python -m pip install -e '.[cpu]'
 ```
 
-The package declares `onnxvoice>=0.2,<0.3` and `utterplan>=0.2.0,<0.3`. OnnxVoice owns the Pocket catalog, downloads, cache, ONNX Runtime sessions, Mimi, Flow-LM, and decoding. PocketSynth does not duplicate those responsibilities.
+The package declares `onnxvoice>=0.1.10,<0.2` and `utterplan>=0.2.0,<0.3`. OnnxVoice owns the Pocket catalog, downloads, cache, ONNX Runtime sessions, Mimi, Flow-LM, and decoding. PocketSynth does not duplicate those responsibilities.
 
 ## Quickstart
 

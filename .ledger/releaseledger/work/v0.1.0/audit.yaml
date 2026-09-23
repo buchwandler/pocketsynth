@@ -1,0 +1,214 @@
+schema_version: 1
+object_type: commit_audit_sheet
+versioning:
+  schema_version: 1
+  revision: 1
+release_version: v0.1.0
+git_base_ref: 9f895e09ce38032a6dc29f41a01b72c9b5f99ff5
+git_base_sha: 9f895e09ce38032a6dc29f41a01b72c9b5f99ff5
+git_head_ref: b97d1715bff5a4f3ea3d5dad49f3c9f8b5454a9e
+git_head_sha: b97d1715bff5a4f3ea3d5dad49f3c9f8b5454a9e
+git_range: 9f895e09ce38032a6dc29f41a01b72c9b5f99ff5..b97d1715bff5a4f3ea3d5dad49f3c9f8b5454a9e
+commit_count: 5
+rows:
+  - sha: 39e784b8667537278d1409ba060d6b1dd1918b53
+    source_ref: git:39e784b8667537278d1409ba060d6b1dd1918b53
+    short_sha: 39e784b
+    changed_paths:
+      - .codecrate.toml
+      - .github/workflows/ci.yml
+      - .gitignore
+      - .ledger/ledger.toml
+      - .ledger/releaseledger/.ledger-project.toml
+      - .ledger/releaseledger/config.toml
+      - .ledger/releaseledger/data/.ledger-project.toml
+      - .ledger/taskledger/.ledger-project.toml
+      - .ledger/taskledger/config.toml
+      - README.md
+      - docs/architecture.md
+      - docs/onnxvoice-pocket-support-implementation-brief.md
+      - pocketsynth/__init__.py
+      - pocketsynth/__main__.py
+      - pocketsynth/_onnxvoice.py
+      - pocketsynth/asset_manager.py
+      - pocketsynth/assets.py
+      - pocketsynth/audio.py
+      - pocketsynth/audio_job.py
+      - pocketsynth/bundle.py
+      - pocketsynth/config.py
+      - pocketsynth/diagnostics.py
+      - pocketsynth/errors.py
+      - pocketsynth/frontend.py
+      - pocketsynth/pipeline.py
+      - pocketsynth/plan_adapter.py
+      - pocketsynth/planning.py
+      - pocketsynth/py.typed
+      - pocketsynth/runtime.py
+      - pocketsynth/types.py
+      - pocketsynth/voice.py
+      - pyproject.toml
+      - tests/test_bundle.py
+      - tests/test_frontend.py
+      - tests/test_onnxvoice_boundary.py
+      - tests/test_voice.py
+    stats:
+      files_changed: 36
+      insertions: 2867
+      deletions: 1
+    inspected: false
+    inspected_paths: []
+    observed_behavior: ""
+    public_impact: unknown
+    decision: needs_review
+    stale: false
+    evidence_subject: "feat: initial version"
+  - sha: f13908faf4a8f282e8a3ab2509903b589a7d8d0f
+    source_ref: git:f13908faf4a8f282e8a3ab2509903b589a7d8d0f
+    short_sha: f13908f
+    changed_paths:
+      - examples/README.md
+      - examples/_output.py
+      - examples/basic.py
+      - examples/basic_local.py
+      - examples/plan_roundtrip.py
+      - examples/pretrained_pipeline.py
+      - examples/run_all.py
+      - pocketsynth/__init__.py
+      - pocketsynth/__main__.py
+      - pocketsynth/convenience.py
+      - pocketsynth/pipeline.py
+      - pocketsynth/types.py
+      - pocketsynth/voice.py
+      - tests/__init__.py
+      - tests/fakes.py
+      - tests/integration/test_real_local_wav.py
+      - tests/test_convenience.py
+      - tests/test_pipeline.py
+    stats:
+      files_changed: 18
+      insertions: 1360
+      deletions: 10
+    inspected: false
+    inspected_paths: []
+    observed_behavior: ""
+    public_impact: unknown
+    decision: needs_review
+    stale: false
+    evidence_subject: "feat: improved version"
+  - sha: 30567e6388b3185bfcf622dc9b493264e2679550
+    source_ref: git:30567e6388b3185bfcf622dc9b493264e2679550
+    short_sha: 30567e6
+    changed_paths:
+      - README.md
+      - docs/onnxvoice-pocket-support-implementation-brief.md
+      - examples/README.md
+      - examples/basic.py
+      - examples/basic_local.py
+      - examples/download_and_synthesize.py
+      - examples/first_wav.py
+      - examples/first_wav_local.py
+      - examples/plan_roundtrip.py
+      - examples/pretrained_pipeline.py
+      - examples/run_all.py
+      - pocketsynth/__init__.py
+      - pocketsynth/__main__.py
+      - pocketsynth/_onnxvoice.py
+      - pocketsynth/asset_progress.py
+      - pocketsynth/assets.py
+      - pocketsynth/audio_job.py
+      - pocketsynth/bundle.py
+      - pocketsynth/pipeline.py
+      - pocketsynth/plan_adapter.py
+      - pocketsynth/runtime.py
+      - pocketsynth/types.py
+      - pocketsynth/voice.py
+      - tests/fakes.py
+      - tests/integration/test_real_local_wav.py
+      - tests/integration/test_real_managed_wav.py
+      - tests/test_asset_progress.py
+      - tests/test_cli.py
+      - tests/test_convenience.py
+      - tests/test_frontend.py
+      - tests/test_onnxvoice_boundary.py
+      - tests/test_pipeline.py
+      - tests/test_voice.py
+    stats:
+      files_changed: 33
+      insertions: 983
+      deletions: 607
+    inspected: false
+    inspected_paths: []
+    observed_behavior: ""
+    public_impact: unknown
+    decision: needs_review
+    stale: false
+    evidence_subject: "feat: improve release and add examples"
+  - sha: e21edbdc1df754b113f6da5f7567f68b4597e406
+    source_ref: git:e21edbdc1df754b113f6da5f7567f68b4597e406
+    short_sha: e21edbd
+    changed_paths:
+      - .gitignore
+      - .pre-commit-config.yaml
+      - examples/basic.py
+      - examples/basic_local.py
+      - examples/plan_roundtrip.py
+      - examples/pretrained_pipeline.py
+      - examples/run_all.py
+      - pocketsynth/_onnxvoice.py
+      - pocketsynth/asset_manager.py
+      - pocketsynth/audio_job.py
+      - pocketsynth/bundle.py
+      - pocketsynth/pipeline.py
+      - pocketsynth/plan_adapter.py
+      - pocketsynth/planning.py
+      - pocketsynth/types.py
+      - pocketsynth/voice.py
+      - tests/fakes.py
+      - tests/test_asset_progress.py
+      - tests/test_bundle.py
+      - tests/test_cli.py
+      - tests/test_convenience.py
+      - tests/test_frontend.py
+      - tests/test_onnxvoice_boundary.py
+      - tests/test_pipeline.py
+      - tests/test_voice.py
+    stats:
+      files_changed: 25
+      insertions: 211
+      deletions: 86
+    inspected: false
+    inspected_paths: []
+    observed_behavior: ""
+    public_impact: unknown
+    decision: needs_review
+    stale: false
+    evidence_subject: "chore: pre-commit"
+  - sha: b97d1715bff5a4f3ea3d5dad49f3c9f8b5454a9e
+    source_ref: git:b97d1715bff5a4f3ea3d5dad49f3c9f8b5454a9e
+    short_sha: b97d171
+    changed_paths:
+      - README.md
+      - examples/README.md
+      - examples/local_bundle.py
+      - examples/quickstart.py
+      - examples/run_all.py
+      - pocketsynth/__main__.py
+      - pocketsynth/convenience.py
+      - pocketsynth/pipeline.py
+      - pyproject.toml
+      - tests/test_cli.py
+      - tests/test_convenience.py
+      - tests/test_examples.py
+      - tests/test_first_wav_integration.py
+      - tests/test_pipeline_fake_runtime.py
+    stats:
+      files_changed: 14
+      insertions: 326
+      deletions: 104
+    inspected: false
+    inspected_paths: []
+    observed_behavior: ""
+    public_impact: unknown
+    decision: needs_review
+    stale: false
+    evidence_subject: "feat: improve example and usage"

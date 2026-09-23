@@ -34,7 +34,7 @@ PocketSynth must not parse graph input/output names, state manifests, Flow-LM ca
 
 ## Minimum compatible runtime
 
-PocketSynth declares `onnxvoice>=0.2,<0.3`. The compatible runtime exposes:
+PocketSynth declares `onnxvoice>=0.1.10,<0.2`. The compatible runtime exposes:
 
 ```python
 installation = onnxvoice.OnnxVoice().install(

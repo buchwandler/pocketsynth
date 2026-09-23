@@ -1,0 +1,790 @@
+ README.md                           | 103 ++++++++++++++++--------------------
+ examples/README.md                  |  69 ++++++++++++++----------
+ examples/local_bundle.py            |  30 +++++++++++
+ examples/quickstart.py              |  40 ++++++++++++++
+ examples/run_all.py                 |  29 ++++++++--
+ pocketsynth/__main__.py             |  25 ++++++---
+ pocketsynth/convenience.py          |   4 +-
+ pocketsynth/pipeline.py             |   9 +++-
+ pyproject.toml                      |   4 +-
+ tests/test_cli.py                   |  10 +++-
+ tests/test_convenience.py           |   6 +--
+ tests/test_examples.py              |  33 ++++++++++++
+ tests/test_first_wav_integration.py |  35 ++++++++++++
+ tests/test_pipeline_fake_runtime.py |  33 ++++++++++++
+ 14 files changed, 326 insertions(+), 104 deletions(-)
+
+diff --git a/README.md b/README.md
+index 1702e6b..a06432f 100644
+--- a/README.md
++++ b/README.md
+@@ -1,74 +1,82 @@
+ # pocketsynth
+
+-`pocketsynth` is an UtterPlan-aware Python runtime for Pocket TTS ONNX bundles. It provides the application-facing path from text and a reference voice to a WAV file while delegating model assets and graph execution to OnnxVoice.
++`pocketsynth` is an UtterPlan-aware Python runtime for Pocket TTS ONNX bundles. It turns text and a reference voice WAV into a WAV file while delegating asset management and model execution to OnnxVoice.
+
+-## Status
++## Status and installation
+
+-Pocket support is implemented across PocketSynth and OnnxVoice. Release readiness depends on the OnnxVoice Pocket catalog contract and real v2 runtime parity tests.
++PocketSynth requires the Pocket-capable OnnxVoice release:
+
+-The minimum compatible dependency is `onnxvoice>=0.2,<0.3`. PocketSynth does not duplicate OnnxVoice catalog, download, cache, ORT session, Mimi, Flow-LM, or decoder logic.
++```bash
++python -m pip install -e '.[cpu]'
++```
++
++The package declares `onnxvoice>=0.2,<0.3` and `utterplan>=0.2.0,<0.3`. OnnxVoice owns the Pocket catalog, downloads, cache, ONNX Runtime sessions, Mimi, Flow-LM, and decoding. PocketSynth does not duplicate those responsibilities.
++
++## Quickstart
+
+-## Installation
++Provide a mono, 16-bit PCM reference voice WAV. The managed bundle is downloaded and cached by OnnxVoice:
+
+ ```bash
+-pip install "pocketsynth[cpu]"
++python examples/quickstart.py --voice reference.wav --output hello.wav
+ ```
+
+-## First WAV, managed bundle
+-
+-Provide a mono 16-bit PCM reference WAV:
++The equivalent Python API is:
+
+ ```python
+ from pocketsynth import synthesize_to_wav
+
+-path = synthesize_to_wav(
+-    "Hello from PocketSynth.",
++synthesize_to_wav(
++    "Hello from Pocket.",
+     "hello.wav",
+     bundle="english_2026-04",
+     voice="reference.wav",
+ )
+-print(path)
+ ```
+
+-The same flow is available from the CLI:
++The CLI provides the same path:
+
+ ```bash
+ pocketsynth synthesize \
+   --bundle english_2026-04 \
+   --voice reference.wav \
+   --output hello-cli.wav \
+-  "Hello world."
++  "Hello from Pocket."
+ ```
+
+-Managed assets are cached by OnnxVoice. Use `--cache-dir` to select a cache and `--offline` for an explicitly cached second run.
++Use `--cache-dir` to select the managed cache. A cached second run can use `--offline`. `--refresh-catalog` and `--force-download` make asset selection reproducible when refreshing or replacing cached assets.
++
++## Local bundle
++
++A local bundle avoids catalog resolution and network access. Use the semantic bundle directory supplied by OnnxVoice:
+
+-## First WAV, local bundle
++```bash
++python examples/local_bundle.py \
++  --bundle-dir ./onnx/english_2026-04 \
++  --voice reference.wav \
++  --output hello-local.wav
++```
++
++The Python form is:
+
+ ```python
+ from pocketsynth import PocketPipeline
+
+-with PocketPipeline.load("./onnx/english_2026-04", precision="int8") as tts:
++with PocketPipeline.load("./onnx/english_2026-04") as tts:
+     tts.set_default_voice("reference.wav")
+     tts("Hello from Pocket.").save_wav("hello-local.wav")
+ ```
+
+-```bash
+-pocketsynth synthesize \
+-  --bundle-dir ./onnx/english_2026-04 \
+-  --voice reference.wav \
+-  --output hello-local-cli.wav \
+-  "Hello world."
+-```
+-
+-Local opening is network-free and requires the concrete bundle files expected by OnnxVoice.
++PocketSynth locates the high-level bundle metadata and component files, then asks OnnxVoice to open the runtime. It does not open ONNX sessions directly.
+
+-## Reference WAV policy
++## Reference voice policy
+
+-The application boundary accepts mono PCM WAV with 16-bit samples. Invalid prompts report the actual channel count, sample width, sample rate, and compression. Other sample rates are resampled to the bundle rate by PocketSynth.
++The application boundary accepts a mono PCM WAV with 16-bit samples. Invalid prompts report the actual channels, sample width, sample rate, and compression. Valid prompts at another sample rate are resampled to the bundle rate.
+
+ ## Reusing a voice
+
+ ```python
++from pocketsynth import PocketPipeline
++
+ with PocketPipeline.from_pretrained("english_2026-04") as tts:
+     narrator = tts.prepare_voice("narrator.wav")
+     tts.set_default_voice(narrator)
+@@ -76,30 +84,19 @@ with PocketPipeline.from_pretrained("english_2026-04") as tts:
+     second = tts("Second sentence.")
+ ```
+
+-The Mimi encoder runs once for `prepare_voice()`. The resulting `PreparedVoice` is reusable without exposing the internal OnnxVoice state shape.
++The voice encoder runs once during `prepare_voice()`. `PreparedVoice` hides the OnnxVoice state representation and can be reused for later calls on the same bundle.
+
+-## Planning and ownership
++## Ownership
+
+-UtterPlan owns semantic units. PocketSynth applies Pocket text normalization, SentencePiece tokenization, token-limit subdivision, voice bindings, generation settings, and composition. OnnxVoice owns catalog resolution, downloads, cache integrity, provider sessions, bundle graph contracts, voice encoding, inference, and decoding.
++UtterPlan owns semantic units. PocketSynth owns text preparation, SentencePiece tokenization, token-limit subdivision, voice bindings, generation settings, composition, and WAV output. OnnxVoice owns catalog resolution, downloads, cache integrity, provider sessions, bundle graph contracts, voice encoding, inference, and decoding.
+
+ ```text
+-UtterPlan -> PocketSynth frontend/policy -> OnnxVoice Pocket runtime -> AudioCompose -> WAV
++UtterPlan -> PocketSynth policy -> OnnxVoice Pocket runtime -> AudioCompose -> WAV
+ ```
+
+-Use `tts.plan()` and `tts.render_plan()` for explicit plan-first workflows. `examples/basic.py` remains the plan-first managed example.
+-
+ ## Examples
+
+-Start with the success path in [`examples/README.md`](examples/README.md):
+-
+-```bash
+-POCKETSYNTH_EXAMPLE_VOICE=/path/to/reference.wav python examples/first_wav.py
+-POCKETSYNTH_EXAMPLE_BUNDLE_DIR=/path/to/bundle \
+-POCKETSYNTH_EXAMPLE_VOICE=/path/to/reference.wav \
+-python examples/first_wav_local.py
+-```
+-
+-The runner avoids managed downloads by default:
++See [`examples/README.md`](examples/README.md). The runner avoids managed downloads unless requested:
+
+ ```bash
+ python examples/run_all.py --list
+@@ -108,26 +105,18 @@ python examples/run_all.py --include-network
+ python examples/run_all.py --include-network --offline
+ ```
+
+-Validate a generated container without an additional audio library:
++Set `POCKETSYNTH_EXAMPLE_VOICE` and, for local examples, `POCKETSYNTH_EXAMPLE_BUNDLE_DIR` as described in the examples documentation.
+
+-```bash
+-python - <<'PY'
+-import wave
+-with wave.open("example-artefacts/first_wav.wav", "rb") as f:
+-    print(f.getframerate(), f.getnframes())
+-PY
+-```
++## Diagnostics and tests
+
+-## Diagnostics
++The check command reports actionable dependency, provider, catalog or local bundle, and reference voice checks:
+
+ ```bash
+ pocketsynth check --provider CPUExecutionProvider
+ pocketsynth check --bundle-dir ./onnx/english_2026-04 --voice reference.wav
+ ```
+
+-The check command reports OnnxVoice import/version, available ORT providers, local bundle artifacts or managed catalog resolution, and reference WAV validity.
+-
+-## Tests
++Run the package checks with:
+
+ ```bash
+ pytest -q
+@@ -143,7 +132,7 @@ export POCKETSYNTH_TEST_VOICE_WAV=/path/to/reference.wav
+ pytest -q -m integration tests/integration/test_real_local_wav.py
+ ```
+
+-The managed test additionally requires network access and uses `POCKETSYNTH_TEST_BUNDLE` when set.
++The managed integration test additionally requires network access and uses `POCKETSYNTH_TEST_BUNDLE` when set. It verifies a cached rerun with explicit offline mode.
+
+ ## Current limitations
+
+diff --git a/examples/README.md b/examples/README.md
+index 21bffce..41697d7 100644
+--- a/examples/README.md
++++ b/examples/README.md
+@@ -1,58 +1,70 @@
+ # PocketSynth examples
+
+-These examples are ordered from the smallest successful first-WAV path to the more explicit planning APIs.
++These examples start with the shortest managed and local paths, then show planning and progress APIs.
+
+ ## Prerequisites
+
++Install the Pocket-capable runtime:
++
+ ```bash
+-pip install -e ".[cpu]"
++python -m pip install -e '.[cpu]'
+ ```
+
+-Set a mono 16-bit PCM reference WAV for examples that synthesize audio:
++Every synthesis example needs a mono, 16-bit PCM reference WAV:
+
+ ```bash
+ export POCKETSYNTH_EXAMPLE_VOICE=/path/to/reference.wav
+ ```
+
+-Managed examples use the OnnxVoice catalog and default to `english_2026-04`. Local examples additionally need:
++Managed examples use the `english_2026-04` catalog bundle by default. Local examples also need:
+
+ ```bash
+ export POCKETSYNTH_EXAMPLE_BUNDLE_DIR=/path/to/onnx/english_2026-04
+ ```
+
+-## 1. First WAV, managed
++## 1. Quickstart
+
+-The smallest managed path is `first_wav.py`:
++The canonical first smoke uses the managed catalog and does not require manual model-file downloads:
+
+ ```bash
+-python examples/first_wav.py
++python examples/quickstart.py \
++  --voice /path/to/reference.wav \
++  --output hello.wav
+ ```
+
+-It writes `example-artefacts/first_wav.wav`.
++Use `--cache-dir` to select the OnnxVoice cache. A cached rerun can add `--offline`.
+
+-For visible download progress, use:
++The local equivalent opens a bundle directory through OnnxVoice:
+
+ ```bash
+-python examples/download_and_synthesize.py
++python examples/local_bundle.py \
++  --bundle-dir /path/to/onnx/english_2026-04 \
++  --voice /path/to/reference.wav \
++  --output hello-local.wav
+ ```
+
+-## 2. First WAV, local
++`quickstart.py` and `local_bundle.py` select semantic bundle references and directories only. They do not select ONNX filenames.
+
+-`first_wav_local.py` skips catalog resolution and plan persistence:
++## 2. Basic plan-first flow
++
++`basic.py` demonstrates planning, saving, and rendering a managed bundle. `basic_local.py` is the corresponding network-free path.
+
+ ```bash
+-python examples/first_wav_local.py
++python examples/basic.py
++python examples/basic_local.py
+ ```
+
+-A local failure points at the bundle or runtime. If local succeeds but managed fails, inspect catalog and installation behavior.
++## 3. Managed download progress
+
+-## 3. Explicit UtterPlan example
++`download_and_synthesize.py` uses the stable PocketSynth progress callback and console renderer:
+
+-`basic.py` demonstrates planning, saving, and rendering a managed bundle. `basic_local.py` is the corresponding network-free path.
++```bash
++python examples/download_and_synthesize.py
++```
+
+ ## 4. Prepared voice reuse
+
+-`pretrained_pipeline.py` prepares one voice and renders two sentences without re-encoding the voice:
++`pretrained_pipeline.py` prepares one voice and renders multiple sentences without re-encoding it:
+
+ ```bash
+ python examples/pretrained_pipeline.py
+@@ -60,11 +72,15 @@ python examples/pretrained_pipeline.py
+
+ ## 5. Plan round-trip
+
+-`plan_roundtrip.py` saves an UtterancePlan, reloads it, and renders the reloaded plan.
++`plan_roundtrip.py` saves an UtterancePlan, reloads it, and renders the reloaded plan:
++
++```bash
++python examples/plan_roundtrip.py
++```
+
+ ## 6. Run all examples
+
+-The runner avoids surprise multi-hundred-megabyte downloads by default:
++The runner avoids surprise managed downloads by default:
+
+ ```bash
+ python examples/run_all.py --list
+@@ -75,20 +91,19 @@ python examples/run_all.py --include-network --offline
+ python examples/run_all.py --include-network --fail-fast
+ ```
+
+-Managed execution requires `--include-network`, except when using `--offline` with assets already cached by OnnxVoice. Local execution requires `POCKETSYNTH_EXAMPLE_BUNDLE_DIR`.
+-
+-The runner validates every generated WAV as mono 16-bit PCM with a positive frame count and non-silent samples. It validates UtterPlan files with UtterPlan itself.
++Managed execution requires `--include-network`, except for `--offline` runs with assets already cached by OnnxVoice. Local execution requires `POCKETSYNTH_EXAMPLE_BUNDLE_DIR`. The runner validates generated WAV containers as mono, 16-bit PCM with positive, non-silent audio, and validates saved UtterPlan files.
+
+-## WAV container verification
++## WAV verification
+
+-No additional audio library is needed to inspect the container:
++No additional audio library is needed to inspect a generated container:
+
+ ```bash
+ python - <<'PY'
+ import wave
+-with wave.open("example-artefacts/first_wav.wav", "rb") as f:
+-    print(f.getframerate(), f.getnframes())
++
++with wave.open("hello.wav", "rb") as stream:
++    print(stream.getframerate(), stream.getnframes())
+ PY
+ ```
+
+-All scripts honor `POCKETSYNTH_EXAMPLE_OUTPUT_DIR`. Managed scripts honor `POCKETSYNTH_EXAMPLE_OFFLINE=1`.
++All scripts honor `POCKETSYNTH_EXAMPLE_OUTPUT_DIR`. Managed scripts honor `POCKETSYNTH_EXAMPLE_OFFLINE=1` where applicable.
+diff --git a/examples/local_bundle.py b/examples/local_bundle.py
+new file mode 100644
+index 0000000..619b061
+--- /dev/null
++++ b/examples/local_bundle.py
+@@ -0,0 +1,30 @@
++"""Minimal local Pocket bundle text-to-WAV example."""
++
++from __future__ import annotations
++
++import argparse
++from pathlib import Path
++
++from pocketsynth import PocketPipeline
++
++
++def main(argv: list[str] | None = None) -> int:
++    parser = argparse.ArgumentParser(description="Synthesize from a local Pocket bundle")
++    parser.add_argument("--bundle-dir", type=Path, required=True)
++    parser.add_argument("--voice", type=Path, required=True, help="mono 16-bit PCM reference WAV")
++    parser.add_argument("--output", type=Path, required=True)
++    parser.add_argument("--precision", choices=("int8", "fp32"), default="int8")
++    parser.add_argument("text", nargs="?", default="Hello from Pocket.")
++    args = parser.parse_args(argv)
++
++    with PocketPipeline.load(args.bundle_dir, precision=args.precision) as pipeline:
++        pipeline.set_default_voice(args.voice)
++        result = pipeline(args.text)
++        result.save_wav(args.output)
++
++    print(f"Wrote {args.output.resolve()}")
++    return 0
++
++
++if __name__ == "__main__":
++    raise SystemExit(main())
+diff --git a/examples/quickstart.py b/examples/quickstart.py
+new file mode 100644
+index 0000000..4a45cb5
+--- /dev/null
++++ b/examples/quickstart.py
+@@ -0,0 +1,40 @@
++"""Minimal managed PocketSynth text-to-WAV example."""
++
++from __future__ import annotations
++
++import argparse
++from pathlib import Path
++
++from pocketsynth import synthesize_to_wav
++
++
++def main(argv: list[str] | None = None) -> int:
++    parser = argparse.ArgumentParser(description="Synthesize one PocketSynth WAV")
++    parser.add_argument("--voice", type=Path, required=True, help="mono 16-bit PCM reference WAV")
++    parser.add_argument("--output", type=Path, required=True, help="output WAV path")
++    parser.add_argument("--bundle", default="english_2026-04")
++    parser.add_argument("--precision", choices=("int8", "fp32"), default="int8")
++    parser.add_argument("--cache-dir", type=Path)
++    parser.add_argument("--offline", action="store_true")
++    parser.add_argument("--refresh-catalog", action="store_true")
++    parser.add_argument("--force-download", action="store_true")
++    parser.add_argument("text", nargs="?", default="Hello from Pocket.")
++    args = parser.parse_args(argv)
++
++    output = synthesize_to_wav(
++        args.text,
++        args.output,
++        bundle=args.bundle,
++        voice=args.voice,
++        precision=args.precision,
++        cache_dir=args.cache_dir,
++        offline=args.offline,
++        refresh_catalog=args.refresh_catalog,
++        force_download=args.force_download,
++    )
++    print(f"Wrote {output.resolve()}")
++    return 0
++
++
++if __name__ == "__main__":
++    raise SystemExit(main())
+diff --git a/examples/run_all.py b/examples/run_all.py
+index e93862f..0ee4b67 100644
+--- a/examples/run_all.py
++++ b/examples/run_all.py
+@@ -15,13 +15,15 @@ _PROJECT_ROOT = _EXAMPLES_DIR.parent
+ _ARTEFACT_DIR = _PROJECT_ROOT / "example-artefacts"
+
+ EXAMPLES = (
+-    ("first_wav.py", "managed", False),
+-    ("first_wav_local.py", "local", False),
++    ("quickstart.py", "managed", False),
++    ("local_bundle.py", "local", False),
+     ("basic.py", "managed", True),
+     ("pretrained_pipeline.py", "managed", False),
+     ("plan_roundtrip.py", "managed", True),
+     ("basic_local.py", "local", True),
+     ("download_and_synthesize.py", "managed", False),
++    ("first_wav.py", "managed", False),
++    ("first_wav_local.py", "local", False),
+ )
+
+
+@@ -53,11 +55,32 @@ def _run_example(name: str, *, env: dict[str, str]) -> Path:
+     script = _EXAMPLES_DIR / name
+     output_dir = _ARTEFACT_DIR / f"examples__{name.replace('.py', '')}"
+     output_dir.mkdir(parents=True, exist_ok=True)
++    command = [sys.executable, str(script)]
++    if name == "quickstart.py":
++        command.extend(
++            [
++                "--voice",
++                env["POCKETSYNTH_EXAMPLE_VOICE"],
++                "--output",
++                str(output_dir / "quickstart.wav"),
++            ]
++        )
++    elif name == "local_bundle.py":
++        command.extend(
++            [
++                "--bundle-dir",
++                env["POCKETSYNTH_EXAMPLE_BUNDLE_DIR"],
++                "--voice",
++                env["POCKETSYNTH_EXAMPLE_VOICE"],
++                "--output",
++                str(output_dir / "local_bundle.wav"),
++            ]
++        )
+     run_env = dict(os.environ)
+     run_env.update(env)
+     run_env["POCKETSYNTH_EXAMPLE_OUTPUT_DIR"] = str(output_dir)
+     result = subprocess.run(
+-        [sys.executable, str(script)],
++        command,
+         cwd=str(_EXAMPLES_DIR),
+         env=run_env,
+         capture_output=True,
+diff --git a/pocketsynth/__main__.py b/pocketsynth/__main__.py
+index 26ae47e..e051dc5 100644
+--- a/pocketsynth/__main__.py
++++ b/pocketsynth/__main__.py
+@@ -23,11 +23,13 @@ def _add_runtime_options(parser: argparse.ArgumentParser) -> None:
+     parser.add_argument("--lsd-steps", type=int, default=1)
+     parser.add_argument("--max-frames", type=int)
+     parser.add_argument("--frames-after-eos", type=int)
+-    parser.add_argument("--normalize-audio", action="store_true")
++    normalize = parser.add_mutually_exclusive_group()
++    normalize.add_argument("--normalize-audio", dest="normalize_audio", action="store_true")
++    normalize.add_argument("--no-normalize-audio", dest="normalize_audio", action="store_false")
++    parser.set_defaults(normalize_audio=False)
+     parser.add_argument("--volume", type=float, default=1.0)
+     parser.add_argument("--provider", action="append", dest="providers")
+
+-
+ def _synthesize(args: argparse.Namespace) -> int:
+     generation = GenerationConfig(
+         temperature=args.temperature,
+@@ -47,16 +49,25 @@ def _synthesize(args: argparse.Namespace) -> int:
+         pipeline_kwargs.update(
+             cache_dir=args.cache_dir,
+             offline=args.offline,
++            refresh_catalog=args.refresh_catalog,
++            force_download=args.force_download,
+         )
+         pipeline = PocketPipeline.from_pretrained(args.bundle, **pipeline_kwargs)
++        bundle_label = args.bundle
+     else:
+         pipeline = PocketPipeline.load(args.bundle_dir, **pipeline_kwargs)
+-    with pipeline:
+-        pipeline.set_default_voice(args.voice)
+-        pipeline.run(args.text).save_wav(args.output)
++        bundle_label = str(args.bundle_dir)
++    with pipeline as active_pipeline:
++        active_pipeline.set_default_voice(args.voice)
++        result = active_pipeline(args.text)
++        result.save_wav(args.output)
++    print(f"Output: {args.output}")
++    print(f"Bundle: {bundle_label}")
++    print(f"Precision: {args.precision}")
++    print(f"Sample rate: {result.sample_rate} Hz")
++    print(f"Duration: {result.duration_seconds:.3f} s")
+     return 0
+
+-
+ def _check(args: argparse.Namespace) -> int:
+     failures = 0
+     try:
+@@ -132,6 +143,8 @@ def main(argv: list[str] | None = None) -> int:
+     synth.add_argument("--output", type=Path, required=True)
+     synth.add_argument("--cache-dir", type=Path)
+     synth.add_argument("--offline", action="store_true")
++    synth.add_argument("--refresh-catalog", action="store_true")
++    synth.add_argument("--force-download", action="store_true")
+     synth.add_argument("text")
+
+     check = sub.add_parser("check", help="check dependencies, providers, bundles, and voice WAVs")
+diff --git a/pocketsynth/convenience.py b/pocketsynth/convenience.py
+index 711bd59..a68f618 100644
+--- a/pocketsynth/convenience.py
++++ b/pocketsynth/convenience.py
+@@ -135,7 +135,7 @@ def synthesize(
+         progress=progress,
+     ) as pipeline:
+         pipeline.set_default_voice(voice)
+-        return pipeline.run(text)
++        return pipeline(text)
+
+
+ def synthesize_to_wav(
+@@ -238,7 +238,7 @@ def synthesize_to_wav(
+         progress=progress,
+     ) as pipeline:
+         pipeline.set_default_voice(voice)
+-        result = pipeline.run(text)
++        result = pipeline(text)
+         _save_wav_atomically(result, destination)
+
+     return destination
+diff --git a/pocketsynth/pipeline.py b/pocketsynth/pipeline.py
+index 3c2edc8..c944092 100644
+--- a/pocketsynth/pipeline.py
++++ b/pocketsynth/pipeline.py
+@@ -293,8 +293,13 @@ class PocketPipeline:
+         return result
+
+     def prepare_voice(self, source: Any) -> PreparedVoice:
+-        voice = self.runtime.prepare_voice(source)
+-        return voice
++        if isinstance(source, PreparedVoice):
++            source.validate_compatible(
++                bundle_id=self.runtime.bundle_id,
++                sample_rate=self.runtime.sample_rate,
++            )
++            return source
++        return self.runtime.prepare_voice(source)
+
+     def set_default_voice(self, source: Any) -> PreparedVoice:
+         self._default_voice = self.prepare_voice(source)
+diff --git a/pyproject.toml b/pyproject.toml
+index 7e849b6..a3393f8 100644
+--- a/pyproject.toml
++++ b/pyproject.toml
+@@ -12,9 +12,9 @@ license = {text = "Apache-2.0"}
+ authors = [{name = "Pocketsynth contributors"}]
+ dependencies = [
+   "numpy>=1.23",
+-  "utterplan>=0.1,<0.2",
++  "utterplan>=0.2.0,<0.3",
+   "sentencepiece>=0.2,<0.3",
+-  "onnxvoice>=0.1,<0.3",
++  "onnxvoice>=0.2,<0.3",
+   "audiocompose>=0.1,<0.2",
+ ]
+ keywords = ["tts", "text-to-speech", "pocket-tts", "onnx", "speech", "onnxruntime"]
+diff --git a/tests/test_cli.py b/tests/test_cli.py
+index df9873b..4a408cd 100644
+--- a/tests/test_cli.py
++++ b/tests/test_cli.py
+@@ -9,6 +9,7 @@ def test_synthesize_cli_wires_generation_and_cache_options(tmp_path) -> None:
+     pipeline = MagicMock()
+     context = MagicMock()
+     context.__enter__.return_value = pipeline
++    pipeline.return_value = MagicMock(sample_rate=24_000, duration_seconds=1.0)
+     context.__exit__.return_value = False
+     with patch(
+         "pocketsynth.__main__.PocketPipeline.from_pretrained", return_value=context
+@@ -30,6 +31,9 @@ def test_synthesize_cli_wires_generation_and_cache_options(tmp_path) -> None:
+                     "--max-frames",
+                     "50",
+                     "--offline",
++                    "--refresh-catalog",
++                    "--force-download",
++                    "--no-normalize-audio",
+                     "--cache-dir",
+                     str(tmp_path / "cache"),
+                     "--provider",
+@@ -42,13 +46,15 @@ def test_synthesize_cli_wires_generation_and_cache_options(tmp_path) -> None:
+
+     kwargs = factory.call_args.kwargs
+     assert kwargs["offline"] is True
++    assert kwargs["refresh_catalog"] is True
++    assert kwargs["force_download"] is True
+     assert kwargs["cache_dir"] == tmp_path / "cache"
+     assert kwargs["providers"] == "CPUExecutionProvider"
+     assert kwargs["generation"].temperature == 0.4
+     assert kwargs["generation"].lsd_steps == 3
+     assert kwargs["generation"].max_frames == 50
+-    context.set_default_voice.assert_called_once()
+-    context.run.assert_called_once_with("Hello")
++    pipeline.set_default_voice.assert_called_once()
++    pipeline.assert_called_once_with("Hello")
+
+
+ def test_check_reports_available_provider(capsys) -> None:
+diff --git a/tests/test_convenience.py b/tests/test_convenience.py
+index f160c45..7d52a6e 100644
+--- a/tests/test_convenience.py
++++ b/tests/test_convenience.py
+@@ -68,7 +68,7 @@ def test_synthesize_to_wav_wires_pipeline(mock_pipeline_cls, tmp_path):
+     mock_pipeline_cls.from_pretrained.return_value.__exit__ = MagicMock(return_value=False)
+
+     mock_result = _make_result()
+-    mock_pipeline.run.return_value = mock_result
++    mock_pipeline.return_value = mock_result
+
+     output = tmp_path / "test.wav"
+     result = synthesize_to_wav(
+@@ -80,7 +80,7 @@ def test_synthesize_to_wav_wires_pipeline(mock_pipeline_cls, tmp_path):
+
+     assert result == output
+     mock_pipeline.set_default_voice.assert_called_once_with("test.wav")
+-    mock_pipeline.run.assert_called_once_with("Hello")
++    mock_pipeline.assert_called_once_with("Hello")
+
+
+ # --- synthesize ---
+@@ -104,7 +104,7 @@ def test_synthesize_returns_audio_result(mock_pipeline_cls):
+     mock_pipeline_cls.from_pretrained.return_value.__exit__ = MagicMock(return_value=False)
+
+     expected = _make_result()
+-    mock_pipeline.run.return_value = expected
++    mock_pipeline.return_value = expected
+
+     result = synthesize("Hello", bundle="test-bundle", voice="test.wav")
+     assert result is expected
+diff --git a/tests/test_examples.py b/tests/test_examples.py
+new file mode 100644
+index 0000000..bef07d6
+--- /dev/null
++++ b/tests/test_examples.py
+@@ -0,0 +1,33 @@
++from __future__ import annotations
++
++import subprocess
++import sys
++from pathlib import Path
++
++ROOT = Path(__file__).resolve().parents[1]
++
++
++def test_example_runner_lists_first_wav_paths() -> None:
++    result = subprocess.run(
++        [sys.executable, "examples/run_all.py", "--list"],
++        cwd=ROOT,
++        capture_output=True,
++        text=True,
++        check=True,
++    )
++
++    assert "quickstart.py\tmanaged" in result.stdout
++    assert "local_bundle.py\tlocal" in result.stdout
++
++
++def test_quickstart_help_is_available_without_runtime_assets() -> None:
++    result = subprocess.run(
++        [sys.executable, "examples/quickstart.py", "--help"],
++        cwd=ROOT,
++        capture_output=True,
++        text=True,
++        check=True,
++    )
++
++    assert "--voice" in result.stdout
++    assert "--output" in result.stdout
+diff --git a/tests/test_first_wav_integration.py b/tests/test_first_wav_integration.py
+new file mode 100644
+index 0000000..3238671
+--- /dev/null
++++ b/tests/test_first_wav_integration.py
+@@ -0,0 +1,35 @@
++from __future__ import annotations
++
++import os
++import wave
++from pathlib import Path
++
++import numpy as np
++import pytest
++
++from pocketsynth import PocketPipeline
++
++pytestmark = pytest.mark.integration
++
++
++def test_configured_local_first_wav_is_valid(tmp_path: Path) -> None:
++    bundle_raw = os.environ.get("POCKETSYNTH_TEST_BUNDLE_DIR")
++    voice = os.environ.get("POCKETSYNTH_TEST_VOICE_WAV")
++    if not bundle_raw or not voice:
++        pytest.skip("set POCKETSYNTH_TEST_BUNDLE_DIR and POCKETSYNTH_TEST_VOICE_WAV")
++
++    output = tmp_path / "first-wav.wav"
++    with PocketPipeline.load(bundle_raw) as pipeline:
++        pipeline.set_default_voice(voice)
++        result = pipeline("Hello from the PocketSynth first WAV integration test.")
++        result.save_wav(output)
++
++    with wave.open(str(output), "rb") as stream:
++        assert stream.getnchannels() == 1
++        assert stream.getsampwidth() == 2
++        assert stream.getnframes() > 0
++        samples = np.frombuffer(stream.readframes(stream.getnframes()), dtype="<i2")
++
++    assert samples.size > 0
++    assert np.all(np.isfinite(samples))
++    assert np.max(np.abs(samples)) > 0
+diff --git a/tests/test_pipeline_fake_runtime.py b/tests/test_pipeline_fake_runtime.py
+new file mode 100644
+index 0000000..3bc6800
+--- /dev/null
++++ b/tests/test_pipeline_fake_runtime.py
+@@ -0,0 +1,33 @@
++from __future__ import annotations
++
++import json
++
++from pocketsynth.config import PipelineConfig
++from pocketsynth.pipeline import PocketPipeline
++from tests.fakes import FakeBundleMetadata, FakePocketRuntime
++
++
++def test_pipeline_fake_runtime_prepares_a_voice_once(tmp_path) -> None:
++    (tmp_path / "bundle.json").write_text(
++        json.dumps(
++            {
++                "bundle_name": "fake-pocket",
++                "language": "en",
++                "schema_version": 2,
++                "sample_rate": 24_000,
++                "samples_per_frame": 1_920,
++                "max_token_per_chunk": 50,
++                "tokenizer_file": "tokenizer.model",
++                "bos_before_voice_file": "bos.npy",
++            }
++        )
++    )
++    runtime = FakePocketRuntime(metadata=FakeBundleMetadata())
++    pipeline = PocketPipeline(PipelineConfig(bundle_dir=tmp_path), runtime=runtime)
++
++    with pipeline:
++        prepared = pipeline.set_default_voice("reference.wav")
++        assert pipeline.prepare_voice(prepared) is prepared
++
++    assert runtime._prepare_count == 1
++    assert runtime._closed

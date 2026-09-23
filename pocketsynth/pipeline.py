@@ -4,10 +4,13 @@ import time
 from collections.abc import Iterator, Mapping
 from dataclasses import replace
 from pathlib import Path
-from typing import Any, Literal
+from typing import TYPE_CHECKING, Any, Literal
 
 import numpy as np
 from utterplan import UtterancePlan, UtterancePlanner
+
+if TYPE_CHECKING:
+    from audiocompose import AudioJob
 
 from ._onnxvoice import install_pretrained_bundle
 from .audio import silence_samples
@@ -335,7 +338,7 @@ class PocketPipeline:
         *,
         voice: PreparedVoice | Any | None = None,
         voice_bindings: Mapping[str, PreparedVoice | Any] | None = None,
-    ):
+    ) -> AudioJob:
         default_voice = self._resolve_voice(voice)
         bindings = {
             name: value if isinstance(value, PreparedVoice) else self.prepare_voice(value)

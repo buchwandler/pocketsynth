@@ -1,0 +1,25 @@
+schema: releaseledger.entry-batch.v1
+operation: create
+schema_version: 1
+object_type: release_entry_batch
+release_version: v0.1.0
+git_base_ref: 9f895e09ce38032a6dc29f41a01b72c9b5f99ff5
+git_base_sha: 9f895e09ce38032a6dc29f41a01b72c9b5f99ff5
+git_head_ref: b97d1715bff5a4f3ea3d5dad49f3c9f8b5454a9e
+git_head_sha: b97d1715bff5a4f3ea3d5dad49f3c9f8b5454a9e
+include_merges: nontrivial
+entries:
+  - kind: internal
+    summary: "Added pre-commit checks and formatting-only source cleanup"
+    status: accepted
+    internal: true
+    source_refs:
+      - git:e21edbdc1df754b113f6da5f7567f68b4597e406
+    paths:
+      - .pre-commit-config.yaml
+      - pocketsynth/pipeline.py
+      - pocketsynth/runtime.py
+    sources:
+      - git:e21edbdc1df754b113f6da5f7567f68b4597e406
+    prs: []
+    issues: []

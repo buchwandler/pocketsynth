@@ -30,6 +30,7 @@ def _add_runtime_options(parser: argparse.ArgumentParser) -> None:
     parser.add_argument("--volume", type=float, default=1.0)
     parser.add_argument("--provider", action="append", dest="providers")
 
+
 def _synthesize(args: argparse.Namespace) -> int:
     generation = GenerationConfig(
         temperature=args.temperature,
@@ -67,6 +68,7 @@ def _synthesize(args: argparse.Namespace) -> int:
     print(f"Sample rate: {result.sample_rate} Hz")
     print(f"Duration: {result.duration_seconds:.3f} s")
     return 0
+
 
 def _check(args: argparse.Namespace) -> int:
     failures = 0

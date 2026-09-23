@@ -1,0 +1,3121 @@
+ .codecrate.toml                                    |  24 ++
+ .github/workflows/ci.yml                           |  25 ++
+ .gitignore                                         |   2 +
+ .ledger/ledger.toml                                |  24 ++
+ .ledger/releaseledger/.ledger-project.toml         |   6 +
+ .ledger/releaseledger/config.toml                  |  56 +++
+ .ledger/releaseledger/data/.ledger-project.toml    |   6 +
+ .ledger/taskledger/.ledger-project.toml            |   6 +
+ .ledger/taskledger/config.toml                     |   7 +
+ README.md                                          | 157 +++++++-
+ docs/architecture.md                               |  70 ++++
+ ...nnxvoice-pocket-support-implementation-brief.md | 359 +++++++++++++++++
+ pocketsynth/__init__.py                            |  38 ++
+ pocketsynth/__main__.py                            |  37 ++
+ pocketsynth/_onnxvoice.py                          | 227 +++++++++++
+ pocketsynth/asset_manager.py                       |  74 ++++
+ pocketsynth/assets.py                              |  36 ++
+ pocketsynth/audio.py                               |  50 +++
+ pocketsynth/audio_job.py                           | 122 ++++++
+ pocketsynth/bundle.py                              | 132 +++++++
+ pocketsynth/config.py                              |  56 +++
+ pocketsynth/diagnostics.py                         |  28 ++
+ pocketsynth/errors.py                              |  70 ++++
+ pocketsynth/frontend.py                            | 112 ++++++
+ pocketsynth/pipeline.py                            | 427 +++++++++++++++++++++
+ pocketsynth/plan_adapter.py                        | 148 +++++++
+ pocketsynth/planning.py                            |  46 +++
+ pocketsynth/py.typed                               |   0
+ pocketsynth/runtime.py                             | 171 +++++++++
+ pocketsynth/types.py                               | 103 +++++
+ pocketsynth/voice.py                               |  61 +++
+ pyproject.toml                                     |  85 ++++
+ tests/test_bundle.py                               |  37 ++
+ tests/test_frontend.py                             |  29 ++
+ tests/test_onnxvoice_boundary.py                   |  17 +
+ tests/test_voice.py                                |  20 +
+ 36 files changed, 2867 insertions(+), 1 deletion(-)
+
+diff --git a/.codecrate.toml b/.codecrate.toml
+new file mode 100644
+index 0000000..da1b64c
+--- /dev/null
++++ b/.codecrate.toml
+@@ -0,0 +1,24 @@
++[codecrate]
++output = "context_pocketsynth.md"
++keep_docstrings = true
++dedupe = true
++respect_gitignore = true
++exclude = ["*/.venv/*", "context_pocketsynth.*"]
++include = [
++  "**/*.py",
++  "**/*.json",
++  "**/*.toml",
++  "**/*.rst",
++  "**/*.md",
++  "**/*.yaml",
++  "**/*.yml",
++  "**/py.typed",
++  "**/NOTICE",
++  "**/NOTICE.*",
++  "**/MANIFEST.in",
++  "LICENSE*",
++]
++split_max_chars = 2500000
++layout = "full"
++profile = "portable-agent"
++emit_standalone_unpacker = true
+diff --git a/.github/workflows/ci.yml b/.github/workflows/ci.yml
+new file mode 100644
+index 0000000..adde933
+--- /dev/null
++++ b/.github/workflows/ci.yml
+@@ -0,0 +1,25 @@
++name: ci
++on: [push, pull_request]
++permissions:
++  contents: read
++jobs:
++  test:
++    runs-on: ${{ matrix.os }}
++    strategy:
++      matrix:
++        os: [ubuntu-latest, windows-latest, macos-latest]
++        python-version: ["3.10", "3.12", "3.13"]
++    steps:
++      - uses: actions/checkout@v4
++        with:
++          fetch-depth: 0
++      - uses: actions/setup-python@v5
++        with:
++          python-version: ${{ matrix.python-version }}
++      - run: python -m pip install -e '.[dev]'
++      - run: python -m compileall -q pocketsynth tests
++      - run: python -m pytest -q
++      - if: matrix.os == 'ubuntu-latest' && matrix.python-version == '3.13'
++        run: python -m ruff check .
++      - if: matrix.os == 'ubuntu-latest' && matrix.python-version == '3.13'
++        run: python -m mypy pocketsynth
+diff --git a/.gitignore b/.gitignore
+index 83972fa..2b4fc56 100644
+--- a/.gitignore
++++ b/.gitignore
+@@ -216,3 +216,5 @@ __marimo__/
+
+ # Streamlit
+ .streamlit/secrets.toml
++context_pocketsynth*.*
++pocketsynth/_version.py
+diff --git a/.ledger/ledger.toml b/.ledger/ledger.toml
+new file mode 100644
+index 0000000..188d93f
+--- /dev/null
++++ b/.ledger/ledger.toml
+@@ -0,0 +1,24 @@
++schema_version = 3
++
++[project]
++uuid = "c643eab8-81fa-4d33-bb3b-b82c28c0c73b"
++name = "pocketsynth"
++
++[ledgers.taskledger.mounts.data]
++storage = "external"
++root = "../ledger"
++
++[ledgers.taskledger.mounts.runtime]
++storage = "user-data"
++
++[ledgers.taskledger.mounts.logs]
++storage = "user-data"
++
++[ledgers.taskledger.mounts.indexes]
++storage = "cache"
++
++[ledgers.releaseledger.mounts.data]
++storage = "project"
++
++[ledgers.releaseledger.mounts.indexes]
++storage = "cache"
+diff --git a/.ledger/releaseledger/.ledger-project.toml b/.ledger/releaseledger/.ledger-project.toml
+new file mode 100644
+index 0000000..60618b3
+--- /dev/null
++++ b/.ledger/releaseledger/.ledger-project.toml
+@@ -0,0 +1,6 @@
++schema_version = 1
++layout_version = 3
++project_uuid = "c643eab8-81fa-4d33-bb3b-b82c28c0c73b"
++tool = "releaseledger"
++mount = "config"
++storage = "project"
+diff --git a/.ledger/releaseledger/config.toml b/.ledger/releaseledger/config.toml
+new file mode 100644
+index 0000000..8d89e2a
+--- /dev/null
++++ b/.ledger/releaseledger/config.toml
+@@ -0,0 +1,56 @@
++config_version = 2
++# Branch-scoped release state. This block is safe to commit.
++ledger_ref = "main"
++ledger_parent_ref = ""
++ledger_branch_guard = "off"
++# Cross-ledger identity. Local record IDs stay unchanged.
++
++[ledger]
++code = "rl"
++# Release defaults.
++
++[release]
++default_changelog = "CHANGELOG.md"
++default_status = "planned"
++allow_dirty_worktree = true
++# Changelog build defaults.
++
++[changelog]
++output = "CHANGELOG.md"
++header = ""
++body = """## {% if release.date %}[{{ release.version }}] - {{ release.date }}{% else %}[{{ release.version }}] - Unreleased{% endif %}
++
++{% for group in groups %}
++### {{ group.title }}
++{% for entry in group.entries %}
++- {% if entry.breaking %}**BREAKING:** {% endif %}{{ entry.summary }}
++{% endfor %}
++
++{% endfor %}
++"""
++footer = "<!-- generated by releaseledger -->"
++trim = true
++render_always = false
++postprocessors = []
++standard = ""
++group_mode = "extended"
++link_references = false
++repository_url = ""
++tag_prefix = "v"
++compare_url_template = ""
++release_url_template = ""
++preamble = ""
++semver = false
++unreleased = true
++# Git-first release evidence.
++
++[git]
++enabled = true
++default_base = "previous_release_tag"
++default_head = "HEAD"
++previous_tag_patterns = ["v{version}", "{version}"]
++include_merges = "nontrivial"
++require_clean_worktree = false
++max_commits = 500
++max_diff_chars_per_commit = 12000
++candidate_status = "draft"
+diff --git a/.ledger/releaseledger/data/.ledger-project.toml b/.ledger/releaseledger/data/.ledger-project.toml
+new file mode 100644
+index 0000000..9293653
+--- /dev/null
++++ b/.ledger/releaseledger/data/.ledger-project.toml
+@@ -0,0 +1,6 @@
++schema_version = 1
++layout_version = 3
++project_uuid = "c643eab8-81fa-4d33-bb3b-b82c28c0c73b"
++tool = "releaseledger"
++mount = "data"
++storage = "project"
+diff --git a/.ledger/taskledger/.ledger-project.toml b/.ledger/taskledger/.ledger-project.toml
+new file mode 100644
+index 0000000..d9a5268
+--- /dev/null
++++ b/.ledger/taskledger/.ledger-project.toml
+@@ -0,0 +1,6 @@
++schema_version = 1
++layout_version = 3
++project_uuid = "c643eab8-81fa-4d33-bb3b-b82c28c0c73b"
++tool = "taskledger"
++mount = "config"
++storage = "project"
+diff --git a/.ledger/taskledger/config.toml b/.ledger/taskledger/config.toml
+new file mode 100644
+index 0000000..6f94549
+--- /dev/null
++++ b/.ledger/taskledger/config.toml
+@@ -0,0 +1,7 @@
++# Project-local Taskledger configuration.
++# Storage topology belongs to Ledgercore; branch state belongs to data/state.toml.
++config_version = 3
++
++[ledger]
++code = 'tl'
++name = 'taskledger'
+diff --git a/README.md b/README.md
+index 39ce1d1..d3d1ac4 100644
+--- a/README.md
++++ b/README.md
+@@ -1 +1,156 @@
+-# pocketsynth
+\ No newline at end of file
++# pocketsynth
++
++`pocketsynth` is an UtterPlan-aware Python runtime for Pocket TTS ONNX bundles. This MVP is shaped
++from the current PiperSynth architecture: it treats OnnxVoice as the sole model catalog/store/ORT
++boundary and keeps semantic planning in UtterPlan.
++
++It intentionally has **no `src/` layer**. The import package lives at repository root.
++
++## Status
++
++This MVP targets an OnnxVoice version that implements the accompanying Pocket support brief. The
++supplied current OnnxVoice snapshot does not yet register a `pocket` system, parse the Pocket bundle
++catalog, or expose generic local multi-file opening; those are the required companion changes.
++
++## Installation
++
++```bash
++pip install -e '.[cpu]'
++```
++
++Versioning is dynamic through `setuptools-scm`; Git tags are the source of the package version and
++`pocketsynth/_version.py` is generated during build/editable installation.
++
++## Managed bundle
++
++```python
++from pocketsynth import PocketPipeline
++
++with PocketPipeline.from_pretrained(
++    "english_2026-04",
++    precision="int8",
++) as tts:
++    tts.set_default_voice("reference.wav")  # mono 16-bit PCM WAV in MVP
++    result = tts("Hello from Pocket.")
++    result.save_wav("hello.wav")
++```
++
++`from_pretrained()` delegates installation to OnnxVoice. Pocketsynth never downloads the model
++bundle itself.
++
++## Strictly local bundle
++
++```python
++from pocketsynth import PocketPipeline
++
++with PocketPipeline.load(
++    "./onnx/english_2026-04",
++    precision="int8",
++) as tts:
++    tts.set_default_voice("reference.wav")
++    tts("Hello.").save_wav("hello.wav")
++```
++
++`load()` is network-free and resolves concrete files from the directory before calling the proposed
++`onnxvoice.open_local(system="pocket", files=...)` API.
++
++## UtterPlan behavior
++
++Sentence units are the default:
++
++```python
++plan = tts.plan(document, unit="sentence")
++result = tts.render_plan(plan, voice="reference.wav")
++```
++
++The adapter keeps UtterPlan's semantic boundaries authoritative. Compatible adjacent segments are
++merged inside a sentence; resolved pauses, language changes, or voice changes split render spans.
++Only after that does the Pocket frontend apply `max_token_per_chunk` subdivision using the bundle's
++SentencePiece tokenizer.
++
++So the hierarchy is:
++
++```text
++UtterPlan sentence unit
++  -> one or more semantic Pocket render spans
++      -> one or more tokenizer-limited Pocket model chunks
++```
++
++## Voice reuse
++
++```python
++with PocketPipeline.from_pretrained("english_2026-04") as tts:
++    narrator = tts.prepare_voice("narrator.wav")
++    tts.set_default_voice(narrator)
++    one = tts("First sentence.")
++    two = tts("Second sentence.")
++```
++
++The Mimi encoder runs once for the prepared voice; the returned state is reusable.
++
++UtterPlan logical voice directives can be mapped explicitly:
++
++```python
++result = tts.render_plan(
++    plan,
++    voice=narrator,
++    voice_bindings={"alice": tts.prepare_voice("alice.wav")},
++)
++```
++
++This MVP does not silently resolve named Pocket predefined voices because those state files are a
++separate upstream/gated asset source. That should be added to OnnxVoice as an explicit asset family.
++
++## Runtime ownership
++
++Pocketsynth owns:
++
++- UtterPlan adaptation and policy;
++- SentencePiece frontend and model-limit splitting;
++- voice binding / prepared voice reuse;
++- Pocket generation controls (`temperature`, `lsd_steps`, frame limits);
++- AudioCompose timeline construction and application-facing result types.
++
++OnnxVoice owns:
++
++- `pocket-onnx-bundles` catalog parsing;
++- download/cache/checksum/install manifests;
++- ORT providers/session options;
++- the coordinated Pocket sessions;
++- state-manifest arrays;
++- Mimi voice encoding;
++- Flow-LM + flow-matching loop;
++- Mimi decoding;
++- canonical native-rate inference output.
++
++See `docs/architecture.md` and the separate `onnxvoice-pocket-support-implementation-brief.md`.
++
++## CLI
++
++```bash
++pocketsynth synthesize \
++  --bundle english_2026-04 \
++  --voice reference.wav \
++  --output hello.wav \
++  "Hello world."
++```
++
++or local-only:
++
++```bash
++pocketsynth synthesize \
++  --bundle-dir ./onnx/english_2026-04 \
++  --voice reference.wav \
++  --output hello.wav \
++  "Hello world."
++```
++
++## MVP limitations
++
++- Pocket support must first be added to OnnxVoice per the implementation brief.
++- Reference WAV input is mono 16-bit PCM in this MVP.
++- Named upstream `.safetensors` voice states are not downloaded.
++- Streaming currently operates at UtterPlan sentence-unit granularity; the OnnxVoice brief reserves
++  a native `PocketAdapter.stream()` capability for a later Pocketsynth streaming path.
++- The bootstrap `pocket-onnx-bundles` catalog should be refreshed once OnnxVoice's builder exists so
++  current Hugging Face sizes and SHA-256 values are materialized automatically.
+diff --git a/docs/architecture.md b/docs/architecture.md
+new file mode 100644
+index 0000000..cf1cb30
+--- /dev/null
++++ b/docs/architecture.md
+@@ -0,0 +1,70 @@
++# Architecture
++
++Pocketsynth follows the same dependency ownership pattern as the current PiperSynth codebase,
++but its atomic model asset is a Pocket **bundle**, not a voice model.
++
++1. **UtterPlan** owns document parsing, SSMD, written-to-spoken preparation, language runs,
++   directives, pause resolution, markers, and sentence/paragraph render units.
++2. **Pocketsynth frontend** owns Pocket-specific text normalization, SentencePiece tokenization,
++   and model token-limit subdivision inside an UtterPlan render span.
++3. **OnnxVoice** owns the Pocket catalog, shared asset store, artifact verification, provider
++   selection, all Pocket ONNX sessions, state-manifest tensors, voice encoding, Flow-LM generation,
++   flow matching, Mimi decoding, and raw native-rate inference results.
++4. **AudioCompose** owns generic audio clips, explicit silence, final timeline composition,
++   resampling/output policy, and marker anchors where exact boundaries are known.
++5. **Pocketsynth** owns application policy: bundle/language compatibility, voice bindings,
++   generation controls, UtterPlan adaptation, result metadata, diagnostics, and the public
++   `PocketRuntime` / `PocketPipeline` APIs.
++
++Normal batch chain:
++
++```text
++source text
++  -> UtterPlan
++  -> Pocketsynth plan adapter
++  -> Pocket frontend / SentencePiece IDs
++  -> OnnxVoice PocketAdapter
++  -> raw float32 model audio
++  -> Pocketsynth compatibility postprocessing
++  -> AudioCompose job
++  -> AudioCompose Composer
++  -> Pocketsynth AudioResult
++```
++
++## Semantic units vs model chunks
++
++UtterPlan units remain semantic/cache/streaming boundaries. The default Pocketsynth unit is a
++sentence. Within one unit, compatible adjacent UtterPlan segments are merged into Pocket render
++spans unless a resolved pause, language change, voice change, or unsupported directive requires a
++hard boundary.
++
++A render span may still exceed Pocket's `max_token_per_chunk`. The Pocket frontend then subdivides
++that span using the bundle tokenizer. Those model chunks are an implementation detail and do not
++change UtterPlan identities or units.
++
++## Asset and runtime lifecycle
++
++`PocketRuntime.load(directory)` is strictly local and network-free. It selects concrete local files
++for the requested precision and opens them through `onnxvoice.open_local(system="pocket", files=...)`.
++
++`PocketPipeline.from_pretrained()` installs `pocket:<bundle>` through `onnxvoice.OnnxVoice`, then
++opens the returned installation. Pocketsynth does not contain a catalog parser, downloader, or
++independent model cache.
++
++The initial `int8` local profile follows current upstream runtime behavior: INT8 Flow-LM main/flow
++and Mimi decoder, with FP32 Mimi encoder and text conditioner. This is deliberately conservative.
++
++## Voice prompts
++
++A Pocket voice is separate from the model bundle. `PreparedVoice` wraps the reusable state returned
++by `PocketAdapter.prepare_voice()`. A reference WAV is decoded/resampled by Pocketsynth and passed to
++OnnxVoice's Mimi encoder once, then the state can be reused across sentences.
++
++Named predefined voice states are intentionally not downloaded by this MVP because they belong to a
++separate upstream/gated asset domain. They should later be exposed by OnnxVoice as explicit assets,
++not hidden network calls inside Pocketsynth.
++
++## Lifecycle
++
++Use context managers where possible. `close()` is idempotent. OnnxVoice owns ONNX session cleanup;
++Pocketsynth owns its planner/runtime wrappers and prepared application state.
+diff --git a/docs/onnxvoice-pocket-support-implementation-brief.md b/docs/onnxvoice-pocket-support-implementation-brief.md
+new file mode 100644
+index 0000000..7640f32
+--- /dev/null
++++ b/docs/onnxvoice-pocket-support-implementation-brief.md
+@@ -0,0 +1,359 @@
++# OnnxVoice implementation brief: Pocket ONNX bundle support
++
++## Goal
++
++Add first-class support for `pocket:<bundle-id>` installations and local Pocket bundle directories
++without moving Pocket catalog/download/runtime responsibilities into Pocketsynth.
++
++The target ownership model mirrors the current PiperSynth/OnnxVoice boundary:
++
++```text
++pocket-onnx-bundles   catalog data + schema + provenance + CI only
++        |
++        v
++OnnxVoice             catalog parser + install/store + provider/session + Pocket graph runtime
++        |
++        v
++Pocketsynth           UtterPlan adaptation + SentencePiece frontend + voice policy + composition
++```
++
++Pocketsynth should never download model assets directly and `pocket-onnx-bundles` should never
++become an importable Python package.
++
++## Current OnnxVoice baseline
++
++The supplied OnnxVoice snapshot already has the useful generic foundation:
++
++- `Artifact` supports arbitrary `role`, `quality`, `component`, `format`, checksum and metadata.
++- `CatalogItem` and `Installation` do not require Piper-specific fields.
++- `AssetStore` is generic, content-addressed, verified and system-scoped.
++- `OnnxSession` already centralizes ONNX Runtime providers/session options.
++- system adapters are registered through `onnxvoice.systems`.
++
++The Pocket gaps are concentrated in four places:
++
++1. `CatalogClient.DEFAULT_SOURCES` and `CatalogClient.list()` only know Piper and Kokoro parsers.
++2. `CatalogClient.resolve(..., quality=...)` assumes quality selection means choosing a single
++   artifact with role `model`; Pocket has several ONNX components and component-specific profiles.
++3. `OnnxVoice.open_local()` only accepts `model/config/voices`, which cannot describe a Pocket
++   bundle with five ONNX graphs plus tokenizer/metadata/BOS conditioning.
++4. `SystemAdapter` is shaped around one `session` and `infer(token_ids)`, while Pocket is a
++   coordinated, stateful multi-session runtime.
++
++The CLI likewise hard-codes system choices and only exposes `catalog piper` tooling.
++
++## Catalog contract
++
++Add the default source:
++
++```python
++DEFAULT_SOURCES = {
++    ...,
++    "pocket": "https://raw.githubusercontent.com/buchwandler/pocket-onnx-bundles/main/catalog/bundles.json",
++}
++```
++
++Add `_parse_pocket(data) -> list[CatalogItem]` in `onnxvoice/catalog.py`.
++
++Recommended normalized item:
++
++```python
++CatalogItem(
++    system="pocket",
++    id="english_2026-04",
++    kind="bundle",
++    sample_rate=24000,
++    aliases=("english", "en", ...),
++    artifacts=(...),
++    metadata={
++        "language": "en",
++        "layers": 6,
++        "bundle_schema": 2,
++        "profiles": {...},
++        "source_revision": "<40-char sha>",
++        "source_repository": "KevinAHM/pocket-tts-onnx",
++        ...,
++    },
++)
++```
++
++Artifact roles should be semantic, not filename-derived:
++
++```text
++bundle_metadata
++ tokenizer
++bos_conditioning
++flow_lm_main
++flow_lm_flow
++mimi_decoder
++mimi_encoder
++text_conditioner
++```
++
++ONNX artifacts can carry `quality="fp32"` or `quality="int8"`.
++
++### Profile selection
++
++Do not reuse the current `role == "model"` quality selector for Pocket. Add a system-aware
++selection step, for example:
++
++```python
++def _select_quality(item: CatalogItem, quality: str | None) -> CatalogItem:
++    if item.system == "pocket":
++        return _select_pocket_profile(item, quality or "int8")
++    ...existing behavior...
++```
++
++For Pocket, retain all unqualified/static artifacts and choose exactly one artifact for each
++qualified component according to `item.metadata["profiles"][quality]`.
++
++For the initial catalog, the recommended `int8` profile should match upstream runtime behavior:
++
++```text
++flow_lm_main      int8
++flow_lm_flow      int8
++mimi_decoder      int8
++mimi_encoder      fp32
++text_conditioner  fp32
++```
++
++A separate future profile can opt into the quantized encoder/conditioner after parity tests.
++
++Store the selected profile in installation metadata as `selected_quality` for parity with the
++existing local-only `resolve(..., quality=...)` check.
++
++## Local multi-file opening
++
++Generalize `OnnxVoice.open_local()` without breaking Piper/Kokoro:
++
++```python
++@staticmethod
++def open_local(
++    *,
++    system: str,
++    model: str | Path | None = None,
++    config: str | Path | None = None,
++    voices: str | Path | None = None,
++    files: Mapping[str, str | Path] | None = None,
++    artifact_metadata: Mapping[str, Mapping[str, Any]] | None = None,
++    metadata: Mapping[str, Any] | None = None,
++    sample_rate: int | None = None,
++    ...,
++): ...
++```
++
++Rules:
++
++- old `model/config/voices` behavior remains unchanged;
++- `files` maps semantic artifact roles to local paths;
++- duplicate roles between legacy arguments and `files` are rejected;
++- local files are never copied or registered;
++- local opening remains network-free;
++- local Pocket callers pass the selected concrete component files, not both precisions.
++
++For roles that may legitimately have multiple qualities in a managed installation, the managed
++manifest continues to preserve `quality`. A selected Pocket install should contain one concrete
++artifact per runtime component.
++
++## Pocket adapter
++
++Add `onnxvoice/systems/pocket.py` with `PocketAdapter` and register it as `system = "pocket"`.
++
++Unlike Piper/Kokoro, it should own multiple lazy sessions:
++
++```python
++self._sessions: dict[str, OnnxSession]
++```
++
++Recommended responsibilities:
++
++- parse and validate `bundle_metadata` (`bundle.json`);
++- load `bos_conditioning`;
++- lazily open `flow_lm_main`, `flow_lm_flow`, `mimi_decoder`, `text_conditioner`;
++- lazily open `mimi_encoder` only when voice cloning from waveform is requested;
++- create state arrays from the Flow-LM and Mimi manifests in `bundle.json`;
++- own the autoregressive Flow-LM loop and LSD/flow-matching loop;
++- own Mimi encoding/decoding because those are graph/runtime responsibilities;
++- return canonical `InferenceResult(float32 mono, sample_rate)`;
++- close every created session idempotently.
++
++### Capability methods
++
++Keep SentencePiece outside OnnxVoice. Pocketsynth should pass model-ready token IDs.
++
++Add Pocket-specific methods without making the base class Pocket-specific:
++
++```python
++@dataclass(frozen=True, slots=True)
++class PocketVoiceState:
++    values: Mapping[str, np.ndarray]
++    metadata: Mapping[str, Any] = field(default_factory=dict)
++
++class PocketAdapter(SystemAdapter):
++    def prepare_voice(self, audio: np.ndarray, *, sample_rate: int) -> PocketVoiceState: ...
++
++    def infer(
++        self,
++        token_ids: Sequence[int],
++        *,
++        voice_state: PocketVoiceState,
++        temperature: float = 0.7,
++        lsd_steps: int = 1,
++        max_frames: int | None = None,
++        frames_after_eos: int | None = None,
++    ) -> InferenceResult: ...
++
++    def stream(...):
++        yield InferenceResult(...)
++```
++
++`SystemAdapter.session` should no longer be an abstract requirement for all systems. Replace it
++with either a default capability error or a more neutral `sessions`/`close()` contract. Piper and
++Kokoro can continue exposing their existing single-session property.
++
++Do not put SentencePiece, UtterPlan, document parsing, pause policy, or audio timeline composition
++in OnnxVoice.
++
++## Pocket bundle metadata validation
++
++At open time, reject a bundle that lacks the runtime fields required by the adapter. At minimum:
++
++```text
++schema_version
++sample_rate
++samples_per_frame
++latent_dim
++conditioning_dim
++flow_lm_state_manifest
++mimi_state_manifest
++mimi_encoder_state_manifest (when voice cloning is used, if present in schema)
++insert_bos_before_voice
++bos_before_voice_file
++```
++
++The adapter should validate expected graph inputs/outputs against the manifests and fail with
++`RuntimeContractError` rather than relying on array ordering accidentally matching a particular
++export.
++
++The current Pocket bundle format also exposes model-level text/runtime guidance such as
++`max_token_per_chunk`, `model_recommended_frames_after_eos`, `remove_semicolons`, and
++`pad_with_spaces_for_short_inputs`. Preserve those fields in installation/runtime metadata so
++Pocketsynth can apply frontend/chunking policy without parsing ONNX graphs.
++
++## Voice states
++
++For MVP, support two voice sources:
++
++1. waveform -> Mimi encoder -> reusable `PocketVoiceState`;
++2. caller-provided `PocketVoiceState` / compatible array mapping.
++
++Do **not** make Pocketsynth silently download predefined voice states from `kyutai/pocket-tts`.
++Those assets are a separate, currently gated source domain. A later OnnxVoice extension can expose
++separate refs such as `pocket-voice:<bundle>/<name>` or a secondary artifact catalog with explicit
++authentication/provenance.
++
++This keeps model-bundle installation deterministic and avoids hiding a second network dependency.
++
++## Catalog build/verify tooling
++
++Add `onnxvoice/catalog_tools/pocket.py` analogous to the Piper tool.
++
++Builder algorithm:
++
++1. Resolve `KevinAHM/pocket-tts-onnx` requested revision (default `main`) to an exact 40-char SHA.
++2. Enumerate `onnx/*/bundle.json` at that revision.
++3. Parse each bundle's `bundle.json` and derive bundle ID/language/runtime metadata.
++4. Enumerate required static artifacts and available FP32/INT8 component variants.
++5. Query Hugging Face file metadata and retain remote byte size plus Xet/LFS SHA-256 where exposed.
++6. Build pinned `resolve/<exact-sha>/<path>?download=true` URLs.
++7. Emit deterministic `catalog/bundles.json` and matching `catalog/source.json`.
++
++Verifier requirements:
++
++- exact catalog kind/schema;
++- exact 40-character pinned source revision;
++- catalog/source bundle count agreement;
++- safe bundle IDs, aliases, filenames and upstream paths;
++- alias uniqueness;
++- exactly one static `bundle_metadata`, `tokenizer`, and `bos_conditioning` artifact;
++- at least one quality for every required ONNX component;
++- no duplicate `(role, quality)` pair;
++- every profile references an actually present `(role, quality)` pair;
++- URLs match repository/revision/path exactly;
++- positive size and valid SHA-256 when the builder can obtain them;
++- deterministic output for the same upstream revision.
++
++CLI:
++
++```text
++onnxvoice catalog pocket build --output ... --source-output ...
++onnxvoice catalog pocket verify --catalog ... --source ...
++```
++
++Also remove hard-coded system choices from normal `list`/`import` CLI paths where practical;
++derive choices from the registered systems/catalog systems.
++
++## Tests
++
++Add at least:
++
++```text
++tests/test_pocket_catalog.py
++tests/test_pocket_catalog_tools.py
++tests/test_pocket_adapter.py
++tests/test_pocket_local_runtime.py
++tests/test_pocket_network_boundaries.py
++```
++
++Coverage targets:
++
++- catalog normalizes semantic roles and profiles;
++- `quality="int8"` selects INT8 Flow-LM/decoder plus FP32 encoder/conditioner;
++- installs preserve role/quality/format metadata;
++- `open()` is strictly local after installation;
++- `open_local(files=...)` performs no catalog/network access;
++- Mimi encoder is lazy;
++- all created sessions close;
++- fake sessions validate state-manifest wiring and output naming;
++- `prepare_voice()` state can be reused for multiple `infer()` calls;
++- token limit violations produce an explicit runtime contract error if Pocketsynth fails to split;
++- provider options are propagated consistently to all component sessions.
++
++## Acceptance API
++
++After implementation, this should work:
++
++```python
++from onnxvoice import OnnxVoice
++
++ov = OnnxVoice()
++installation = ov.install("pocket:english_2026-04", quality="int8")
++
++with ov.open(installation, providers="CPUExecutionProvider") as runtime:
++    voice = runtime.prepare_voice(reference_audio, sample_rate=24000)
++    result = runtime.infer(token_ids, voice_state=voice, temperature=0.7, lsd_steps=1)
++    assert result.sample_rate == 24000
++```
++
++And this must remain network-free:
++
++```python
++with onnxvoice.open_local(
++    system="pocket",
++    files={
++        "bundle_metadata": "bundle.json",
++        "bos_conditioning": "bos_before_voice.npy",
++        "flow_lm_main": "flow_lm_main_int8.onnx",
++        "flow_lm_flow": "flow_lm_flow_int8.onnx",
++        "mimi_decoder": "mimi_decoder_int8.onnx",
++        "mimi_encoder": "mimi_encoder.onnx",
++        "text_conditioner": "text_conditioner.onnx",
++    },
++    sample_rate=24000,
++) as runtime:
++    ...
++```
++
++The tokenizer path is intentionally absent from the runtime file map because tokenization belongs
++to Pocketsynth's Pocket frontend, not the OnnxVoice graph adapter. Managed installations still
++store the tokenizer artifact so Pocketsynth can locate it from the installation.
+diff --git a/pocketsynth/__init__.py b/pocketsynth/__init__.py
+new file mode 100644
+index 0000000..37dff9b
+--- /dev/null
++++ b/pocketsynth/__init__.py
+@@ -0,0 +1,38 @@
++from __future__ import annotations
++
++try:
++    from ._version import __version__
++except ImportError:
++    try:
++        from importlib.metadata import version
++
++        __version__ = version("pocketsynth")
++    except Exception:
++        __version__ = "0.0.0"
++
++from .asset_manager import BundleAssetManager
++from .assets import PocketBundle
++from .bundle import BundleMetadata, BundlePaths
++from .config import GenerationConfig, PipelineConfig
++from .pipeline import PocketPipeline, PreparedAudioUnits
++from .runtime import PocketRuntime
++from .types import AudioChunk, AudioResult, AudioUnitDescriptor, AudioUnitResult
++from .voice import PreparedVoice
++
++__all__ = [
++    "__version__",
++    "AudioChunk",
++    "AudioResult",
++    "AudioUnitDescriptor",
++    "AudioUnitResult",
++    "BundleAssetManager",
++    "BundleMetadata",
++    "BundlePaths",
++    "GenerationConfig",
++    "PipelineConfig",
++    "PocketBundle",
++    "PocketPipeline",
++    "PocketRuntime",
++    "PreparedAudioUnits",
++    "PreparedVoice",
++]
+diff --git a/pocketsynth/__main__.py b/pocketsynth/__main__.py
+new file mode 100644
+index 0000000..023e9db
+--- /dev/null
++++ b/pocketsynth/__main__.py
+@@ -0,0 +1,37 @@
++from __future__ import annotations
++
++import argparse
++from pathlib import Path
++
++from . import PocketPipeline, __version__
++
++
++def main(argv: list[str] | None = None) -> int:
++    parser = argparse.ArgumentParser(prog="pocketsynth")
++    parser.add_argument("--version", action="version", version=__version__)
++    sub = parser.add_subparsers(dest="command", required=True)
++    synth = sub.add_parser("synthesize")
++    source = synth.add_mutually_exclusive_group(required=True)
++    source.add_argument("--bundle")
++    source.add_argument("--bundle-dir", type=Path)
++    synth.add_argument("--precision", choices=("int8", "fp32"), default="int8")
++    synth.add_argument("--voice", type=Path, required=True, help="mono 16-bit PCM WAV prompt")
++    synth.add_argument("--output", type=Path, required=True)
++    synth.add_argument("text")
++    args = parser.parse_args(argv)
++
++    if args.command == "synthesize":
++        pipeline = (
++            PocketPipeline.from_pretrained(args.bundle, precision=args.precision)
++            if args.bundle
++            else PocketPipeline.load(args.bundle_dir, precision=args.precision)
++        )
++        with pipeline:
++            pipeline.set_default_voice(args.voice)
++            pipeline(args.text).save_wav(args.output)
++        return 0
++    return 2
++
++
++if __name__ == "__main__":
++    raise SystemExit(main())
+diff --git a/pocketsynth/_onnxvoice.py b/pocketsynth/_onnxvoice.py
+new file mode 100644
+index 0000000..baf2337
+--- /dev/null
++++ b/pocketsynth/_onnxvoice.py
+@@ -0,0 +1,227 @@
++from __future__ import annotations
++
++from collections.abc import Callable, Mapping, Sequence
++from dataclasses import dataclass
++from pathlib import Path
++from typing import Any
++
++from .bundle import BundlePaths, Precision
++from .errors import (
++    AssetCacheError,
++    AssetDownloadError,
++    AssetError,
++    BundleNotFoundError,
++    CatalogUnavailableError,
++    ModelInferenceError,
++    OfflineAssetError,
++    OptionalDependencyError,
++    RuntimeCapabilityError,
++    SessionCreationError,
++    UnsupportedBundleError,
++)
++
++
++@dataclass(frozen=True, slots=True)
++class ResolvedPocketBundle:
++    ref: str | None
++    bundle_id: str | None
++    path: Path
++    tokenizer_path: Path
++    metadata_path: Path
++    precision: str | None
++    source_revision: str | None
++    metadata: Mapping[str, Any]
++    installation: Any | None = None
++
++
++def _onnxvoice() -> Any:
++    try:
++        import onnxvoice
++    except ModuleNotFoundError as exc:
++        raise OptionalDependencyError(
++            "OnnxVoice with Pocket support is required. Install pocketsynth[cpu] or pocketsynth[gpu]."
++        ) from exc
++    return onnxvoice
++
++
++def normalize_pocket_ref(ref: str) -> str:
++    if not isinstance(ref, str) or not ref.strip():
++        raise BundleNotFoundError("Pocket bundle reference must not be empty")
++    value = ref.strip()
++    if ":" not in value:
++        return f"pocket:{value}"
++    system, item_id = value.split(":", 1)
++    if system.casefold() != "pocket" or not item_id:
++        raise BundleNotFoundError(f"Not a Pocket bundle reference: {ref!r}")
++    return f"pocket:{item_id}"
++
++
++def normalize_provider_request(
++    providers: Sequence[Any] | str | None,
++    provider_options: Mapping[str, Any] | None,
++) -> tuple[str | Sequence[str] | None, Any | None]:
++    if providers is None:
++        return "CPUExecutionProvider", provider_options
++    if isinstance(providers, str):
++        return providers, provider_options
++    names: list[str] = []
++    options: list[dict[str, Any]] = []
++    explicit = False
++    for provider in providers:
++        if hasattr(provider, "name"):
++            names.append(str(provider.name))
++            value = dict(getattr(provider, "options", {}) or {})
++            options.append(value)
++            explicit = explicit or bool(value)
++        elif isinstance(provider, tuple):
++            name, raw = provider
++            names.append(str(name))
++            options.append(dict(raw or {}))
++            explicit = True
++        else:
++            names.append(str(provider))
++            options.append(dict(provider_options or {}))
++    if not names:
++        raise ValueError("providers must not be empty")
++    return names, options if explicit else provider_options
++
++
++def _map_error(exc: Exception, *, operation: str) -> Exception:
++    name = type(exc).__name__
++    if name in {"AssetNotFoundError", "NotInstalledError"}:
++        return BundleNotFoundError(str(exc))
++    if name == "OfflineError":
++        return OfflineAssetError(str(exc))
++    if name in {"IntegrityError", "ManifestError", "UnsafePathError", "LockError"}:
++        return AssetCacheError(str(exc))
++    if name == "CatalogError":
++        return CatalogUnavailableError(str(exc))
++    if name in {"RuntimeContractError", "CapabilityError", "UnsupportedSystemError"}:
++        return RuntimeCapabilityError(str(exc))
++    if operation == "infer":
++        return ModelInferenceError("Pocket ONNX inference failed")
++    if operation == "open":
++        return SessionCreationError("Could not open Pocket ONNX runtime")
++    return AssetDownloadError(str(exc)) if operation == "install" else AssetError(str(exc))
++
++
++def _call(operation: str, fn: Callable[[], Any]) -> Any:
++    try:
++        return fn()
++    except (FileNotFoundError, ValueError, TypeError):
++        raise
++    except Exception as exc:
++        mapped = _map_error(exc, operation=operation)
++        raise mapped from exc
++
++
++def open_local_bundle(
++    paths: BundlePaths,
++    *,
++    providers: Sequence[Any] | str | None = None,
++    provider_options: Mapping[str, Any] | None = None,
++    session_options: Any | None = None,
++) -> Any:
++    requested, options = normalize_provider_request(providers, provider_options)
++    module = _onnxvoice()
++    try:
++        return _call(
++            "open",
++            lambda: module.open_local(
++                system="pocket",
++                files=paths.runtime_files(),
++                metadata={
++                    "bundle_name": paths.metadata.bundle_name,
++                    "selected_quality": paths.precision,
++                    "managed": False,
++                },
++                sample_rate=paths.metadata.sample_rate,
++                providers=requested,
++                provider_options=options,
++                session_options=session_options,
++            ),
++        )
++    except TypeError as exc:
++        raise RuntimeCapabilityError(
++            "Installed OnnxVoice does not yet support open_local(files=...) for Pocket bundles. "
++            "Apply the accompanying OnnxVoice implementation brief."
++        ) from exc
++
++
++def install_pretrained_bundle(
++    ref: str,
++    *,
++    precision: Precision = "int8",
++    cache_dir: str | Path | None = None,
++    offline: bool | None = None,
++    refresh_catalog: bool = False,
++    force_download: bool = False,
++    progress: Callable[[Any], None] | None = None,
++) -> ResolvedPocketBundle:
++    module = _onnxvoice()
++    manager = module.OnnxVoice(cache_dir=cache_dir, offline=bool(offline))
++    normalized = normalize_pocket_ref(ref)
++    installation = _call(
++        "install",
++        lambda: manager.install(
++            normalized,
++            quality=precision,
++            refresh=refresh_catalog,
++            force=force_download,
++            progress=progress,
++        ),
++    )
++    return installation_to_bundle_info(installation, ref=normalized)
++
++
++def open_installed_bundle(
++    resolved: ResolvedPocketBundle,
++    *,
++    providers: Sequence[Any] | str | None = None,
++    provider_options: Mapping[str, Any] | None = None,
++    session_options: Any | None = None,
++) -> Any:
++    requested, options = normalize_provider_request(providers, provider_options)
++    module = _onnxvoice()
++    manager = module.OnnxVoice()
++    return _call(
++        "open",
++        lambda: manager.open(
++            resolved.installation,
++            providers=requested,
++            provider_options=options,
++            session_options=session_options,
++        ),
++    )
++
++
++def installation_to_bundle_info(installation: Any, *, ref: str | None = None) -> ResolvedPocketBundle:
++    try:
++        metadata_path = Path(installation.artifact("bundle_metadata").path)
++        tokenizer_path = Path(installation.artifact("tokenizer").path)
++    except (KeyError, AttributeError) as exc:
++        raise UnsupportedBundleError(
++            "Pocket installation must contain bundle_metadata and tokenizer artifacts"
++        ) from exc
++    raw = dict(getattr(installation, "metadata", {}) or {})
++    return ResolvedPocketBundle(
++        ref=ref or getattr(installation, "ref", None),
++        bundle_id=getattr(installation, "id", None),
++        path=Path(getattr(installation, "path")),
++        tokenizer_path=tokenizer_path,
++        metadata_path=metadata_path,
++        precision=(str(raw["selected_quality"]) if raw.get("selected_quality") else None),
++        source_revision=(str(raw["source_revision"]) if raw.get("source_revision") else None),
++        metadata=raw,
++        installation=installation,
++    )
++
++
++def runtime_diagnostics(runtime: Any) -> dict[str, Any]:
++    sessions = getattr(runtime, "sessions", None)
++    if callable(sessions):
++        sessions = sessions()
++    return {
++        "providers_requested": tuple(getattr(runtime, "providers", ()) or ()),
++        "sessions": tuple(sorted(sessions)) if isinstance(sessions, Mapping) else (),
++    }
+diff --git a/pocketsynth/asset_manager.py b/pocketsynth/asset_manager.py
+new file mode 100644
+index 0000000..cbeb9d1
+--- /dev/null
++++ b/pocketsynth/asset_manager.py
+@@ -0,0 +1,74 @@
++from __future__ import annotations
++
++import os
++from pathlib import Path
++from typing import Any
++
++from ._onnxvoice import normalize_pocket_ref
++from .assets import PocketBundle
++from .bundle import Precision
++from .errors import OptionalDependencyError
++
++
++def _offline_value(value: bool | None) -> bool:
++    if value is not None:
++        return value
++    return os.environ.get("POCKETSYNTH_OFFLINE", "").casefold() in {"1", "true", "yes", "on"}
++
++
++class BundleAssetManager:
++    """Thin compatibility facade over OnnxVoice's Pocket catalog/store."""
++
++    def __init__(
++        self,
++        cache_dir: str | Path | None = None,
++        *,
++        catalog_path: str | Path | None = None,
++        offline: bool | None = None,
++        progress: Any | None = None,
++    ) -> None:
++        self.cache_dir = Path(cache_dir) if cache_dir is not None else None
++        self.catalog_path = Path(catalog_path) if catalog_path is not None else None
++        self.offline = _offline_value(offline)
++        self.progress = progress
++
++    def _manager(self) -> Any:
++        try:
++            import onnxvoice
++        except ModuleNotFoundError as exc:
++            raise OptionalDependencyError("OnnxVoice is required for Pocket bundle assets") from exc
++        sources = {"pocket": str(self.catalog_path)} if self.catalog_path is not None else None
++        return onnxvoice.OnnxVoice(
++            cache_dir=self.cache_dir, catalog_sources=sources, offline=self.offline
++        )
++
++    def list_bundles(self, *, language: str | None = None, refresh: bool = False) -> tuple[Any, ...]:
++        return tuple(
++            self._manager().list(
++                "pocket", language=language, refresh=refresh, progress=self.progress
++            )
++        )
++
++    def resolve_bundle(
++        self,
++        bundle: str,
++        *,
++        precision: Precision = "int8",
++        download: bool = True,
++        refresh_catalog: bool = False,
++        force_download: bool = False,
++    ) -> PocketBundle:
++        manager = self._manager()
++        ref = normalize_pocket_ref(bundle)
++        installation = (
++            manager.install(
++                ref,
++                quality=precision,
++                refresh=refresh_catalog,
++                force=force_download,
++                progress=self.progress,
++            )
++            if download
++            else manager.resolve(ref, quality=precision)
++        )
++        return PocketBundle.from_installation(installation)
+diff --git a/pocketsynth/assets.py b/pocketsynth/assets.py
+new file mode 100644
+index 0000000..64af3fd
+--- /dev/null
++++ b/pocketsynth/assets.py
+@@ -0,0 +1,36 @@
++from __future__ import annotations
++
++from dataclasses import dataclass
++from pathlib import Path
++from typing import Any, Mapping
++
++from ._onnxvoice import ResolvedPocketBundle, installation_to_bundle_info
++
++
++@dataclass(frozen=True, slots=True)
++class PocketBundle:
++    bundle_id: str | None
++    path: Path
++    tokenizer_path: Path
++    metadata_path: Path
++    precision: str | None = None
++    source_revision: str | None = None
++    metadata: Mapping[str, Any] | None = None
++    installation: Any | None = None
++
++    @classmethod
++    def from_resolved(cls, resolved: ResolvedPocketBundle) -> "PocketBundle":
++        return cls(
++            resolved.bundle_id,
++            resolved.path,
++            resolved.tokenizer_path,
++            resolved.metadata_path,
++            resolved.precision,
++            resolved.source_revision,
++            resolved.metadata,
++            resolved.installation,
++        )
++
++    @classmethod
++    def from_installation(cls, installation: Any) -> "PocketBundle":
++        return cls.from_resolved(installation_to_bundle_info(installation))
+diff --git a/pocketsynth/audio.py b/pocketsynth/audio.py
+new file mode 100644
+index 0000000..26863e4
+--- /dev/null
++++ b/pocketsynth/audio.py
+@@ -0,0 +1,50 @@
++from __future__ import annotations
++
++import wave
++from pathlib import Path
++from typing import BinaryIO
++
++import numpy as np
++
++from .errors import ModelInferenceError
++
++
++def as_float32_mono(audio: np.ndarray, *, name: str = "audio") -> np.ndarray:
++    value = np.asarray(audio, dtype=np.float32)
++    if value.ndim != 1:
++        raise ModelInferenceError(f"{name} must be one-dimensional, got {value.shape}")
++    if not np.all(np.isfinite(value)):
++        raise ModelInferenceError(f"{name} contains non-finite samples")
++    return value
++
++
++def postprocess_audio(audio: np.ndarray, *, normalize: bool, volume: float) -> np.ndarray:
++    value = as_float32_mono(audio)
++    if normalize and value.size:
++        peak = float(np.max(np.abs(value)))
++        value = value / peak if peak > 1e-8 else np.zeros_like(value)
++    if volume != 1.0:
++        value = value * np.float32(volume)
++    return np.clip(value, -1.0, 1.0).astype(np.float32, copy=False)
++
++
++def float_to_int16(audio: np.ndarray) -> np.ndarray:
++    return (np.clip(as_float32_mono(audio), -1.0, 1.0) * 32767.0).astype(np.int16)
++
++
++def silence_samples(sample_rate: int, seconds: float) -> int:
++    if isinstance(sample_rate, bool) or not isinstance(sample_rate, int) or sample_rate <= 0:
++        raise ValueError("sample_rate must be a positive integer")
++    if not np.isfinite(seconds) or seconds < 0:
++        raise ValueError("seconds must be finite and >= 0")
++    return round(sample_rate * seconds)
++
++
++def write_wav(target: str | Path | BinaryIO, audio: np.ndarray, sample_rate: int) -> None:
++    destination = str(target) if isinstance(target, Path) else target
++    pcm = float_to_int16(audio)
++    with wave.open(destination, "wb") as handle:
++        handle.setnchannels(1)
++        handle.setsampwidth(2)
++        handle.setframerate(sample_rate)
++        handle.writeframes(pcm.tobytes())
+diff --git a/pocketsynth/audio_job.py b/pocketsynth/audio_job.py
+new file mode 100644
+index 0000000..77a007a
+--- /dev/null
++++ b/pocketsynth/audio_job.py
+@@ -0,0 +1,122 @@
++from __future__ import annotations
++
++from collections.abc import Mapping, Sequence
++from dataclasses import dataclass
++from typing import Any
++
++import numpy as np
++
++from .audio import postprocess_audio
++from .config import GenerationConfig
++from .plan_adapter import PreparedPocketSpan, PreparedPocketUnit
++from .voice import PreparedVoice
++
++
++@dataclass(frozen=True, slots=True)
++class RenderedPocketSpan:
++    span: PreparedPocketSpan
++    audio: np.ndarray
++    sample_rate: int
++    token_ids: tuple[int, ...]
++    metadata: Mapping[str, Any]
++
++
++def render_span(
++    span: PreparedPocketSpan,
++    *,
++    runtime: Any,
++    voice: PreparedVoice,
++    generation: GenerationConfig,
++) -> RenderedPocketSpan:
++    parts: list[np.ndarray] = []
++    token_ids: list[int] = []
++    model_chunks = runtime.frontend.split_for_model(span.text)
++    for chunk_text in model_chunks:
++        ids = runtime.frontend.encode(chunk_text)
++        token_ids.extend(ids)
++        audio = runtime.infer_tokens(ids, voice, generation)
++        if audio.size:
++            parts.append(audio)
++    combined = (
++        np.concatenate(parts).astype(np.float32, copy=False)
++        if parts
++        else np.zeros(0, dtype=np.float32)
++    )
++    combined = postprocess_audio(
++        combined, normalize=generation.normalize_audio, volume=generation.volume
++    )
++    return RenderedPocketSpan(
++        span=span,
++        audio=combined,
++        sample_rate=runtime.sample_rate,
++        token_ids=tuple(token_ids),
++        metadata={"model_chunks": list(model_chunks)},
++    )
++
++
++def build_audio_job(
++    *,
++    plan: Any,
++    prepared_units: Sequence[PreparedPocketUnit],
++    runtime: Any,
++    default_voice: PreparedVoice,
++    voice_bindings: Mapping[str, PreparedVoice],
++    generation: GenerationConfig,
++    producer_version: str,
++):
++    """Create an AudioCompose job plus rendered-span metadata.
++
++    Import AudioCompose lazily so package metadata/frontend tests do not need the optional runtime.
++    """
++    from audiocompose import AudioBufferSource, AudioClip, AudioJob, LoudnessPolicy, OutputPolicy, Silence
++
++    items: list[Any] = []
++    rendered: list[RenderedPocketSpan] = []
++    for unit in prepared_units:
++        for span in unit.spans:
++            voice = voice_bindings.get(span.voice_ref, default_voice) if span.voice_ref else default_voice
++            if span.pause_before_seconds > 0:
++                items.append(
++                    Silence(
++                        f"pause:{span.id}:before",
++                        span.pause_before_seconds,
++                        {"pocketsynth.span_id": span.id, "pocketsynth.position": "before"},
++                    )
++                )
++            result = render_span(
++                span, runtime=runtime, voice=voice, generation=generation
++            )
++            rendered.append(result)
++            if result.audio.size:
++                items.append(
++                    AudioClip(
++                        span.id,
++                        AudioBufferSource(result.audio, result.sample_rate),
++                        metadata={
++                            "pocketsynth.span_id": span.id,
++                            "pocketsynth.segment_ids": list(span.segment_ids),
++                            "pocketsynth.token_ids": list(result.token_ids),
++                        },
++                    )
++                )
++            if span.pause_after_seconds > 0:
++                items.append(
++                    Silence(
++                        f"pause:{span.id}:after",
++                        span.pause_after_seconds,
++                        {"pocketsynth.span_id": span.id, "pocketsynth.position": "after"},
++                    )
++                )
++    output = OutputPolicy(
++        sample_rate=runtime.sample_rate,
++        channels=1,
++        loudness=LoudnessPolicy(target_lufs=None, true_peak_ceiling_dbtp=None),
++        clip_policy="clamp",
++    )
++    job = AudioJob(
++        tuple(items),
++        output=output,
++        producer={"name": "pocketsynth", "version": producer_version},
++        source={"utterplan.plan_id": plan.plan_id, "utterplan.schema_version": plan.schema_version},
++    )
++    return job, tuple(rendered)
+diff --git a/pocketsynth/bundle.py b/pocketsynth/bundle.py
+new file mode 100644
+index 0000000..6baea48
+--- /dev/null
++++ b/pocketsynth/bundle.py
+@@ -0,0 +1,132 @@
++from __future__ import annotations
++
++import json
++from dataclasses import dataclass
++from pathlib import Path
++from typing import Any, Literal
++
++from .errors import BundleNotFoundError, UnsupportedBundleError
++
++Precision = Literal["int8", "fp32"]
++
++
++@dataclass(frozen=True, slots=True)
++class BundleMetadata:
++    path: Path
++    bundle_name: str
++    language: str
++    schema_version: int
++    sample_rate: int
++    samples_per_frame: int
++    max_token_per_chunk: int
++    tokenizer_file: str
++    bos_before_voice_file: str
++    remove_semicolons: bool = False
++    pad_with_spaces_for_short_inputs: bool = False
++    model_recommended_frames_after_eos: int | None = None
++    predefined_voices: tuple[str, ...] = ()
++    raw: dict[str, Any] | None = None
++
++    @classmethod
++    def load(cls, path: str | Path) -> "BundleMetadata":
++        source = Path(path)
++        if not source.is_file():
++            raise BundleNotFoundError(f"Missing Pocket bundle metadata: {source}")
++        try:
++            raw = json.loads(source.read_text(encoding="utf-8"))
++        except (OSError, json.JSONDecodeError) as exc:
++            raise UnsupportedBundleError(f"Invalid Pocket bundle metadata: {source}") from exc
++        required = {
++            "bundle_name",
++            "language",
++            "schema_version",
++            "sample_rate",
++            "samples_per_frame",
++            "max_token_per_chunk",
++            "tokenizer_file",
++            "bos_before_voice_file",
++        }
++        missing = sorted(required - set(raw))
++        if missing:
++            raise UnsupportedBundleError(
++                f"Pocket bundle metadata is missing: {', '.join(missing)}"
++            )
++        return cls(
++            path=source.resolve(),
++            bundle_name=str(raw["bundle_name"]),
++            language=str(raw["language"]),
++            schema_version=int(raw["schema_version"]),
++            sample_rate=int(raw["sample_rate"]),
++            samples_per_frame=int(raw["samples_per_frame"]),
++            max_token_per_chunk=int(raw["max_token_per_chunk"]),
++            tokenizer_file=str(raw["tokenizer_file"]),
++            bos_before_voice_file=str(raw["bos_before_voice_file"]),
++            remove_semicolons=bool(raw.get("remove_semicolons", False)),
++            pad_with_spaces_for_short_inputs=bool(raw.get("pad_with_spaces_for_short_inputs", False)),
++            model_recommended_frames_after_eos=(
++                int(raw["model_recommended_frames_after_eos"])
++                if raw.get("model_recommended_frames_after_eos") is not None
++                else None
++            ),
++            predefined_voices=tuple(str(v) for v in raw.get("predefined_voices", ())),
++            raw=dict(raw),
++        )
++
++    @property
++    def frame_duration(self) -> float:
++        return self.samples_per_frame / self.sample_rate
++
++
++@dataclass(frozen=True, slots=True)
++class BundlePaths:
++    root: Path
++    metadata: BundleMetadata
++    tokenizer: Path
++    bos_conditioning: Path
++    flow_lm_main: Path
++    flow_lm_flow: Path
++    mimi_decoder: Path
++    mimi_encoder: Path
++    text_conditioner: Path
++    precision: Precision
++
++    @classmethod
++    def from_directory(
++        cls, directory: str | Path, *, precision: Precision = "int8"
++    ) -> "BundlePaths":
++        root = Path(directory).expanduser().resolve()
++        metadata = BundleMetadata.load(root / "bundle.json")
++        if precision not in {"int8", "fp32"}:
++            raise ValueError("precision must be 'int8' or 'fp32'")
++
++        def required(name: str) -> Path:
++            path = root / name
++            if not path.is_file():
++                raise BundleNotFoundError(f"Missing Pocket bundle artifact: {path}")
++            return path
++
++        suffix = "_int8.onnx" if precision == "int8" else ".onnx"
++        # Match the current upstream Python runtime profile: encoder and text conditioner stay FP32.
++        return cls(
++            root=root,
++            metadata=metadata,
++            tokenizer=required(metadata.tokenizer_file),
++            bos_conditioning=required(metadata.bos_before_voice_file),
++            flow_lm_main=required(f"flow_lm_main{suffix}"),
++            flow_lm_flow=required(f"flow_lm_flow{suffix}"),
++            mimi_decoder=required(f"mimi_decoder{suffix}"),
++            mimi_encoder=required("mimi_encoder.onnx"),
++            text_conditioner=required("text_conditioner.onnx"),
++            precision=precision,
++        )
++
++    def runtime_files(self) -> dict[str, Path]:
++        return {
++            "bundle_metadata": self.metadata.path,
++            "bos_conditioning": self.bos_conditioning,
++            "flow_lm_main": self.flow_lm_main,
++            "flow_lm_flow": self.flow_lm_flow,
++            "mimi_decoder": self.mimi_decoder,
++            "mimi_encoder": self.mimi_encoder,
++            "text_conditioner": self.text_conditioner,
++        }
+diff --git a/pocketsynth/config.py b/pocketsynth/config.py
+new file mode 100644
+index 0000000..09a110b
+--- /dev/null
++++ b/pocketsynth/config.py
+@@ -0,0 +1,56 @@
++from __future__ import annotations
++
++from collections.abc import Mapping
++from dataclasses import dataclass, field
++from pathlib import Path
++from typing import Any, Literal
++
++from utterplan import LinguisticsConfig, PauseConfig, SSMDConfig
++
++from .bundle import Precision
++
++
++@dataclass(frozen=True, slots=True)
++class GenerationConfig:
++    temperature: float = 0.7
++    lsd_steps: int = 1
++    max_frames: int | None = None
++    frames_after_eos: int | None = None
++    normalize_audio: bool = False
++    volume: float = 1.0
++
++    def __post_init__(self) -> None:
++        if not 0.0 <= self.temperature <= 2.0:
++            raise ValueError("temperature must be between 0 and 2")
++        if self.lsd_steps < 1:
++            raise ValueError("lsd_steps must be >= 1")
++        if self.max_frames is not None and self.max_frames < 1:
++            raise ValueError("max_frames must be >= 1")
++        if self.frames_after_eos is not None and self.frames_after_eos < 0:
++            raise ValueError("frames_after_eos must be >= 0")
++        if self.volume < 0:
++            raise ValueError("volume must be >= 0")
++
++
++@dataclass(frozen=True, slots=True)
++class PipelineConfig:
++    bundle_dir: Path
++    precision: Precision = "int8"
++    generation: GenerationConfig = field(default_factory=GenerationConfig)
++    providers: Any | None = None
++    provider_options: Mapping[str, Any] | None = None
++    session_options: Any | None = None
++    language: str | None = None
++    document_format: Literal["plain", "ssmd"] = "plain"
++    text_preparation: Literal["identity", "spokenform"] = "spokenform"
++    unit: Literal["paragraph", "sentence"] = "sentence"
++    pauses: PauseConfig = field(default_factory=PauseConfig)
++    linguistics: LinguisticsConfig = field(default_factory=LinguisticsConfig)
++    ssmd: SSMDConfig = field(default_factory=SSMDConfig)
++    overlap_mode: Literal["snap", "strict"] = "snap"
++    language_aliases: Mapping[str, str] = field(default_factory=dict)
++    planner_diagnostics: bool = True
++    directive_policy: Literal["error", "warn", "ignore"] = "error"
++    language_policy: Literal["strict", "allow"] = "strict"
++    retain_unit_audio: bool = False
++    return_diagnostics: bool = True
+diff --git a/pocketsynth/diagnostics.py b/pocketsynth/diagnostics.py
+new file mode 100644
+index 0000000..a1a16a2
+--- /dev/null
++++ b/pocketsynth/diagnostics.py
+@@ -0,0 +1,28 @@
++from __future__ import annotations
++
++from dataclasses import dataclass
++from typing import Any
++
++
++@dataclass(frozen=True, slots=True)
++class RuntimeDiagnostics:
++    bundle_id: str | None = None
++    bundle_path: str | None = None
++    sample_rate: int | None = None
++    precision: str | None = None
++    providers_requested: tuple[str, ...] = ()
++    providers_active: tuple[str, ...] = ()
++    sessions: tuple[str, ...] = ()
++    plan_id: str | None = None
++    utterplan_producer: dict[str, Any] | None = None
++    utterplan_schema_version: int | None = None
++    source_revision: str | None = None
++
++
++@dataclass(frozen=True, slots=True)
++class TimingDiagnostics:
++    planning_ms: float | None = None
++    frontend_ms: float | None = None
++    inference_ms: float | None = None
++    composition_ms: float | None = None
++    total_ms: float | None = None
+diff --git a/pocketsynth/errors.py b/pocketsynth/errors.py
+new file mode 100644
+index 0000000..719b102
+--- /dev/null
++++ b/pocketsynth/errors.py
+@@ -0,0 +1,70 @@
++class PocketSynthError(Exception):
++    """Base error for pocketsynth."""
++
++
++class OptionalDependencyError(PocketSynthError):
++    pass
++
++
++class BundleError(PocketSynthError):
++    pass
++
++
++class BundleNotFoundError(BundleError):
++    pass
++
++
++class UnsupportedBundleError(BundleError):
++    pass
++
++
++class AssetError(PocketSynthError):
++    pass
++
++
++class AssetDownloadError(AssetError):
++    pass
++
++
++class AssetCacheError(AssetError):
++    pass
++
++
++class CatalogUnavailableError(AssetError):
++    pass
++
++
++class OfflineAssetError(AssetError):
++    pass
++
++
++class SessionCreationError(PocketSynthError):
++    pass
++
++
++class ModelInferenceError(PocketSynthError):
++    pass
++
++
++class RuntimeCapabilityError(PocketSynthError):
++    pass
++
++
++class VoicePromptError(PocketSynthError):
++    pass
++
++
++class VoiceBindingError(PocketSynthError):
++    pass
++
++
++class UnsupportedPlanDirectiveError(PocketSynthError):
++    pass
++
++
++class UnsupportedPlanLanguageError(PocketSynthError):
++    pass
++
++
++class PipelineClosedError(PocketSynthError):
++    pass
+diff --git a/pocketsynth/frontend.py b/pocketsynth/frontend.py
+new file mode 100644
+index 0000000..2be4021
+--- /dev/null
++++ b/pocketsynth/frontend.py
+@@ -0,0 +1,112 @@
++from __future__ import annotations
++
++import re
++from collections.abc import Sequence
++from pathlib import Path
++from typing import Any
++
++from .bundle import BundleMetadata
++from .errors import OptionalDependencyError
++
++_SENTENCE_END = re.compile(r"(?<=[.!?])\s+")
++_SOFT_END = re.compile(r"(?<=[,;:])\s+")
++
++
++class PocketFrontend:
++    """Pocket text preparation and SentencePiece encoding.
++
++    UtterPlan owns semantic sentence/paragraph boundaries. This frontend only performs
++    Pocket-specific text normalization and model token-limit subdivision.
++    """
++
++    def __init__(
++        self,
++        tokenizer_path: str | Path,
++        metadata: BundleMetadata,
++        *,
++        processor: Any | None = None,
++    ) -> None:
++        self.metadata = metadata
++        if processor is None:
++            try:
++                import sentencepiece as spm
++            except ModuleNotFoundError as exc:
++                raise OptionalDependencyError(
++                    "Pocket tokenization requires sentencepiece. Install pocketsynth."
++                ) from exc
++            processor = spm.SentencePieceProcessor()
++            if not processor.Load(str(tokenizer_path)):
++                raise ValueError(f"Could not load SentencePiece model: {tokenizer_path}")
++        self.processor = processor
++
++    def prepare_text(self, text: str) -> str:
++        value = " ".join(text.strip().split())
++        if self.metadata.remove_semicolons:
++            value = value.replace(";", ",")
++        if self.metadata.pad_with_spaces_for_short_inputs and value:
++            value = f" {value} "
++        return value
++
++    def encode(self, text: str) -> tuple[int, ...]:
++        prepared = self.prepare_text(text)
++        if not prepared:
++            return ()
++        values = self.processor.EncodeAsIds(prepared)
++        return tuple(int(value) for value in values)
++
++    def split_for_model(self, text: str) -> tuple[str, ...]:
++        prepared = self.prepare_text(text)
++        if not prepared:
++            return ()
++        limit = self.metadata.max_token_per_chunk
++        if len(self.encode(prepared)) <= limit:
++            return (prepared,)
++
++        chunks = self._pack(_SENTENCE_END.split(prepared), limit)
++        result: list[str] = []
++        for chunk in chunks:
++            if len(self.encode(chunk)) <= limit:
++                result.append(chunk)
++                continue
++            for soft in self._pack(_SOFT_END.split(chunk), limit):
++                if len(self.encode(soft)) <= limit:
++                    result.append(soft)
++                else:
++                    result.extend(self._split_words(soft, limit))
++        return tuple(part for part in result if part.strip())
++
++    def _pack(self, parts: Sequence[str], limit: int) -> list[str]:
++        result: list[str] = []
++        current = ""
++        for raw in parts:
++            part = raw.strip()
++            if not part:
++                continue
++            candidate = part if not current else f"{current} {part}"
++            if current and len(self.encode(candidate)) > limit:
++                result.append(current)
++                current = part
++            else:
++                current = candidate
++        if current:
++            result.append(current)
++        return result
++
++    def _split_words(self, text: str, limit: int) -> list[str]:
++        result: list[str] = []
++        current: list[str] = []
++        for word in text.split():
++            candidate = " ".join([*current, word])
++            if current and len(self.encode(candidate)) > limit:
++                result.append(" ".join(current))
++                current = [word]
++            else:
++                current.append(word)
++            if len(self.encode(" ".join(current))) > limit:
++                raise ValueError(
++                    "A single Pocket tokenization unit exceeds max_token_per_chunk; "
++                    "cannot split safely by whitespace"
++                )
++        if current:
++            result.append(" ".join(current))
++        return result
+diff --git a/pocketsynth/pipeline.py b/pocketsynth/pipeline.py
+new file mode 100644
+index 0000000..eb95dc4
+--- /dev/null
++++ b/pocketsynth/pipeline.py
+@@ -0,0 +1,427 @@
++from __future__ import annotations
++
++import time
++from collections.abc import Iterator, Mapping
++from dataclasses import replace
++from pathlib import Path
++from typing import Any, Literal
++
++import numpy as np
++from utterplan import UtterancePlan, UtterancePlanner
++
++from ._onnxvoice import install_pretrained_bundle
++from .audio import silence_samples
++from .audio_job import build_audio_job, render_span
++from .bundle import BundleMetadata, BundlePaths, Precision
++from .config import GenerationConfig, PipelineConfig
++from .diagnostics import TimingDiagnostics
++from .errors import PipelineClosedError, VoiceBindingError
++from .plan_adapter import PreparedPocketUnit, prepare_plan as adapt_plan
++from .planning import planner_config_from_pocketsynth, planner_language
++from .runtime import PocketRuntime
++from .types import AudioChunk, AudioResult, AudioUnitDescriptor, AudioUnitResult
++from .voice import PreparedVoice
++
++try:
++    from ._version import __version__
++except ImportError:
++    __version__ = "0.0.0"
++
++
++class PreparedAudioUnits:
++    def __init__(
++        self,
++        pipeline: "PocketPipeline",
++        plan: UtterancePlan,
++        units: tuple[PreparedPocketUnit, ...],
++        default_voice: PreparedVoice,
++        voice_bindings: Mapping[str, PreparedVoice],
++        generation: GenerationConfig,
++    ) -> None:
++        self.pipeline = pipeline
++        self.plan = plan
++        self._units = units
++        self.default_voice = default_voice
++        self.voice_bindings = dict(voice_bindings)
++        self.generation = generation
++        self.descriptors = tuple(
++            AudioUnitDescriptor(
++                index=u.index,
++                unit_kind=u.kind,
++                text=plan.texts.spoken[u.spoken_start:u.spoken_end],
++                char_start=u.spoken_start,
++                char_end=u.spoken_end,
++                plan_unit_id=u.plan_unit_id,
++                content_hash=u.content_hash,
++                segment_ids=u.segment_ids,
++                marker_ids=u.marker_ids,
++            )
++            for u in units
++        )
++
++    def render(self) -> Iterator[AudioUnitResult]:
++        by_index = {d.index: d for d in self.descriptors}
++        for unit in self._units:
++            parts: list[np.ndarray] = []
++            ids: list[int] = []
++            warnings: list[str] = []
++            for span in unit.spans:
++                voice = (
++                    self.voice_bindings.get(span.voice_ref, self.default_voice)
++                    if span.voice_ref
++                    else self.default_voice
++                )
++                if span.voice_ref and span.voice_ref not in self.voice_bindings:
++                    raise VoiceBindingError(f"No Pocket voice binding for {span.voice_ref!r}")
++                before = silence_samples(self.pipeline.runtime.sample_rate, span.pause_before_seconds)
++                if before:
++                    parts.append(np.zeros(before, dtype=np.float32))
++                rendered = render_span(
++                    span,
++                    runtime=self.pipeline.runtime,
++                    voice=voice,
++                    generation=self.generation,
++                )
++                ids.extend(rendered.token_ids)
++                warnings.extend(span.warnings)
++                if rendered.audio.size:
++                    parts.append(rendered.audio)
++                after = silence_samples(self.pipeline.runtime.sample_rate, span.pause_after_seconds)
++                if after:
++                    parts.append(np.zeros(after, dtype=np.float32))
++            audio = np.concatenate(parts).astype(np.float32, copy=False) if parts else np.zeros(0, dtype=np.float32)
++            yield AudioUnitResult(
++                descriptor=by_index[unit.index],
++                audio=audio,
++                sample_rate=self.pipeline.runtime.sample_rate,
++                token_ids=tuple(ids),
++                warnings=tuple(warnings),
++                metadata={"plan_id": self.plan.plan_id},
++            )
++
++
++class PocketPipeline:
++    """Reusable UtterPlan semantic planner and Pocket bundle renderer."""
++
++    def __init__(
++        self,
++        config: PipelineConfig,
++        *,
++        runtime: PocketRuntime | None = None,
++        planner: UtterancePlanner | None = None,
++    ) -> None:
++        self.config = config
++        self._runtime = runtime
++        self._planner = planner
++        self._closed = False
++        self._last_planning_ms: float | None = None
++        self._default_voice: PreparedVoice | None = None
++        self._bundle_metadata = (
++            runtime.metadata if runtime is not None else BundleMetadata.load(config.bundle_dir / "bundle.json")
++        )
++
++    @classmethod
++    def load(
++        cls,
++        directory: str | Path,
++        *,
++        precision: Precision = "int8",
++        generation: GenerationConfig | None = None,
++        providers: Any | None = None,
++        provider_options: Mapping[str, Any] | None = None,
++        session_options: Any | None = None,
++        language: str | None = None,
++        unit: Literal["paragraph", "sentence"] = "sentence",
++        text_preparation: Literal["identity", "spokenform"] = "spokenform",
++        **planner_options: Any,
++    ) -> "PocketPipeline":
++        paths = BundlePaths.from_directory(directory, precision=precision)
++        runtime = PocketRuntime.load(
++            directory,
++            precision=precision,
++            providers=providers,
++            provider_options=provider_options,
++            session_options=session_options,
++        )
++        config = PipelineConfig(
++            bundle_dir=paths.root,
++            precision=precision,
++            generation=generation or GenerationConfig(),
++            providers=providers,
++            provider_options=provider_options,
++            session_options=session_options,
++            language=language or planner_language(paths.metadata),
++            unit=unit,
++            text_preparation=text_preparation,
++            **planner_options,
++        )
++        return cls(config, runtime=runtime)
++
++    @classmethod
++    def from_pretrained(
++        cls,
++        bundle: str,
++        *,
++        precision: Precision = "int8",
++        cache_dir: str | Path | None = None,
++        offline: bool | None = None,
++        refresh_catalog: bool = False,
++        force_download: bool = False,
++        generation: GenerationConfig | None = None,
++        providers: Any | None = None,
++        provider_options: Mapping[str, Any] | None = None,
++        session_options: Any | None = None,
++        language: str | None = None,
++        unit: Literal["paragraph", "sentence"] = "sentence",
++        text_preparation: Literal["identity", "spokenform"] = "spokenform",
++        progress: Any | None = None,
++        **planner_options: Any,
++    ) -> "PocketPipeline":
++        resolved = install_pretrained_bundle(
++            bundle,
++            precision=precision,
++            cache_dir=cache_dir,
++            offline=offline,
++            refresh_catalog=refresh_catalog,
++            force_download=force_download,
++            progress=progress,
++        )
++        runtime = PocketRuntime.from_resolved(
++            resolved,
++            providers=providers,
++            provider_options=provider_options,
++            session_options=session_options,
++        )
++        config = PipelineConfig(
++            bundle_dir=resolved.path,
++            precision=precision,
++            generation=generation or GenerationConfig(),
++            providers=providers,
++            provider_options=provider_options,
++            session_options=session_options,
++            language=language or planner_language(runtime.metadata),
++            unit=unit,
++            text_preparation=text_preparation,
++            **planner_options,
++        )
++        return cls(config, runtime=runtime)
++
++    @property
++    def runtime(self) -> PocketRuntime:
++        self._ensure_open()
++        if self._runtime is None:
++            self._runtime = PocketRuntime.load(
++                self.config.bundle_dir,
++                precision=self.config.precision,
++                providers=self.config.providers,
++                provider_options=self.config.provider_options,
++                session_options=self.config.session_options,
++            )
++        return self._runtime
++
++    def _planner_instance(self) -> UtterancePlanner:
++        if self._planner is None:
++            self._planner = UtterancePlanner(
++                planner_config_from_pocketsynth(self.config, self._bundle_metadata)
++            )
++        return self._planner
++
++    def plan(
++        self,
++        text: str,
++        *,
++        unit: Literal["paragraph", "sentence"] | None = None,
++    ) -> UtterancePlan:
++        self._ensure_open()
++        started = time.perf_counter()
++        planner_config = planner_config_from_pocketsynth(
++            self.config, self._bundle_metadata, unit=unit
++        )
++        result = self._planner_instance().plan(text, config=planner_config, unit=unit)
++        self._last_planning_ms = (time.perf_counter() - started) * 1000
++        return result
++
++    def prepare_voice(self, source: Any) -> PreparedVoice:
++        voice = self.runtime.prepare_voice(source)
++        return voice
++
++    def set_default_voice(self, source: Any) -> PreparedVoice:
++        self._default_voice = self.prepare_voice(source)
++        return self._default_voice
++
++    def prepare_plan(
++        self,
++        plan: UtterancePlan,
++        *,
++        voice: PreparedVoice | Any | None = None,
++        voice_bindings: Mapping[str, PreparedVoice | Any] | None = None,
++    ) -> PreparedAudioUnits:
++        default_voice = self._resolve_voice(voice)
++        bindings: dict[str, PreparedVoice] = {}
++        for name, value in dict(voice_bindings or {}).items():
++            bindings[name] = value if isinstance(value, PreparedVoice) else self.prepare_voice(value)
++        units = adapt_plan(
++            plan,
++            bundle_language=planner_language(self._bundle_metadata),
++            directive_policy=self.config.directive_policy,
++            language_policy=self.config.language_policy,
++            voice_bindings=bindings,
++        )
++        return PreparedAudioUnits(
++            self, plan, units, default_voice, bindings, self.config.generation
++        )
++
++    def to_audio_job(
++        self,
++        plan: UtterancePlan,
++        *,
++        voice: PreparedVoice | Any | None = None,
++        voice_bindings: Mapping[str, PreparedVoice | Any] | None = None,
++    ):
++        default_voice = self._resolve_voice(voice)
++        bindings = {
++            name: value if isinstance(value, PreparedVoice) else self.prepare_voice(value)
++            for name, value in dict(voice_bindings or {}).items()
++        }
++        units = adapt_plan(
++            plan,
++            bundle_language=planner_language(self._bundle_metadata),
++            directive_policy=self.config.directive_policy,
++            language_policy=self.config.language_policy,
++            voice_bindings=bindings,
++        )
++        job, _ = build_audio_job(
++            plan=plan,
++            prepared_units=units,
++            runtime=self.runtime,
++            default_voice=default_voice,
++            voice_bindings=bindings,
++            generation=self.config.generation,
++            producer_version=__version__,
++        )
++        return job
++
++    def render_plan(
++        self,
++        plan: UtterancePlan,
++        *,
++        voice: PreparedVoice | Any | None = None,
++        voice_bindings: Mapping[str, PreparedVoice | Any] | None = None,
++    ) -> AudioResult:
++        from audiocompose import Composer
++
++        self._ensure_open()
++        started = time.perf_counter()
++        default_voice = self._resolve_voice(voice)
++        bindings = {
++            name: value if isinstance(value, PreparedVoice) else self.prepare_voice(value)
++            for name, value in dict(voice_bindings or {}).items()
++        }
++        units = adapt_plan(
++            plan,
++            bundle_language=planner_language(self._bundle_metadata),
++            directive_policy=self.config.directive_policy,
++            language_policy=self.config.language_policy,
++            voice_bindings=bindings,
++        )
++        inference_started = time.perf_counter()
++        job, rendered = build_audio_job(
++            plan=plan,
++            prepared_units=units,
++            runtime=self.runtime,
++            default_voice=default_voice,
++            voice_bindings=bindings,
++            generation=self.config.generation,
++            producer_version=__version__,
++        )
++        inference_ms = (time.perf_counter() - inference_started) * 1000
++        compose_started = time.perf_counter()
++        composition = Composer().compose(job)
++        composition_ms = (time.perf_counter() - compose_started) * 1000
++        chunks = [
++            AudioChunk(
++                sample_rate=item.sample_rate,
++                audio=item.audio,
++                token_ids=item.token_ids,
++                warnings=item.span.warnings,
++                metadata=dict(item.metadata),
++            )
++            for item in rendered
++        ] if self.config.retain_unit_audio else []
++        diagnostics = self.runtime.diagnostics if self.config.return_diagnostics else None
++        if diagnostics is not None:
++            diagnostics = replace(
++                diagnostics,
++                plan_id=plan.plan_id,
++                utterplan_producer=dict(plan.producer),
++                utterplan_schema_version=plan.schema_version,
++            )
++        timing = TimingDiagnostics(
++            planning_ms=self._last_planning_ms,
++            inference_ms=inference_ms,
++            composition_ms=composition_ms,
++            total_ms=(time.perf_counter() - started) * 1000,
++        ) if self.config.return_diagnostics else None
++        return AudioResult(
++            audio=composition.audio,
++            sample_rate=composition.sample_rate,
++            source_text=plan.source.text,
++            prepared_text=plan.texts.spoken,
++            plan=plan,
++            plan_id=plan.plan_id,
++            chunks=chunks,
++            warnings=tuple(plan.warnings) + tuple(w for item in rendered for w in item.span.warnings),
++            diagnostics=diagnostics,
++            timing=timing,
++            metadata={
++                "bundle_id": self.runtime.bundle_id,
++                "precision": self.runtime.precision,
++                "source_revision": self.runtime.source_revision,
++            },
++        )
++
++    def __call__(self, text: str, *, voice: Any | None = None, **kwargs: Any) -> AudioResult:
++        plan = self.plan(text)
++        return self.render_plan(plan, voice=voice, **kwargs)
++
++    def iter_units(
++        self,
++        text: str,
++        *,
++        voice: Any | None = None,
++        voice_bindings: Mapping[str, Any] | None = None,
++    ) -> Iterator[AudioUnitResult]:
++        plan = self.plan(text, unit="sentence")
++        yield from self.prepare_plan(
++            plan, voice=voice, voice_bindings=voice_bindings
++        ).render()
++
++    def _resolve_voice(self, voice: PreparedVoice | Any | None) -> PreparedVoice:
++        if voice is None:
++            if self._default_voice is None:
++                raise VoiceBindingError(
++                    "A Pocket voice prompt is required. Call set_default_voice(), pass voice=, "
++                    "or provide voice bindings."
++                )
++            return self._default_voice
++        return voice if isinstance(voice, PreparedVoice) else self.prepare_voice(voice)
++
++    def close(self) -> None:
++        if self._closed:
++            return
++        if self._runtime is not None:
++            self._runtime.close()
++        if self._planner is not None:
++            self._planner.close()
++        self._closed = True
++
++    def _ensure_open(self) -> None:
++        if self._closed:
++            raise PipelineClosedError("PocketPipeline is closed")
++
++    def __enter__(self) -> "PocketPipeline":
++        self._ensure_open()
++        return self
++
++    def __exit__(self, *_: object) -> None:
++        self.close()
+diff --git a/pocketsynth/plan_adapter.py b/pocketsynth/plan_adapter.py
+new file mode 100644
+index 0000000..122aada
+--- /dev/null
++++ b/pocketsynth/plan_adapter.py
+@@ -0,0 +1,148 @@
++from __future__ import annotations
++
++from dataclasses import dataclass
++from typing import Any, Literal, Mapping
++
++from utterplan import PlanSegment, UtterancePlan, normalize_language
++
++from .errors import (
++    UnsupportedPlanDirectiveError,
++    UnsupportedPlanLanguageError,
++    VoiceBindingError,
++)
++
++
++@dataclass(frozen=True, slots=True)
++class PreparedPocketSpan:
++    id: str
++    text: str
++    language: str
++    segment_ids: tuple[str, ...]
++    spoken_start: int
++    spoken_end: int
++    pause_before_seconds: float
++    pause_after_seconds: float
++    voice_ref: str | None
++    warnings: tuple[str, ...] = ()
++
++
++@dataclass(frozen=True, slots=True)
++class PreparedPocketUnit:
++    plan_unit_id: str
++    index: int
++    kind: Literal["paragraph", "sentence"]
++    spoken_start: int
++    spoken_end: int
++    segment_ids: tuple[str, ...]
++    marker_ids: tuple[str, ...]
++    content_hash: str
++    spans: tuple[PreparedPocketSpan, ...]
++
++
++def _voice_ref(segment: PlanSegment) -> str | None:
++    voice = getattr(segment.directives, "voice", None)
++    return getattr(voice, "reference", None) if voice is not None else None
++
++
++def _unsupported(segment: PlanSegment) -> list[str]:
++    result: list[str] = []
++    directives = segment.directives
++    for name in ("pronunciation", "prosody", "emphasis", "audio"):
++        if getattr(directives, name, None) is not None:
++            result.append(name)
++    return result
++
++
++def _issue(policy: str, message: str) -> str | None:
++    if policy == "error":
++        raise UnsupportedPlanDirectiveError(message)
++    return message if policy == "warn" else None
++
++
++def _compatible(a: PlanSegment, b: PlanSegment) -> bool:
++    return (
++        normalize_language(a.language) == normalize_language(b.language)
++        and _voice_ref(a) == _voice_ref(b)
++        and a.pause_after.seconds == 0
++        and b.pause_before.seconds == 0
++        and not _unsupported(a)
++        and not _unsupported(b)
++    )
++
++
++def prepare_plan(
++    plan: UtterancePlan,
++    *,
++    bundle_language: str,
++    directive_policy: str = "error",
++    language_policy: str = "strict",
++    voice_bindings: Mapping[str, Any] | None = None,
++) -> tuple[PreparedPocketUnit, ...]:
++    plan.validate()
++    segments = {segment.id: segment for segment in plan.segments}
++    expected = normalize_language(bundle_language)
++    prepared_units: list[PreparedPocketUnit] = []
++    for unit in plan.units:
++        unit_segments = [segments[segment_id] for segment_id in unit.segment_ids]
++        spans: list[PreparedPocketSpan] = []
++        group: list[PlanSegment] = []
++
++        def flush() -> None:
++            if not group:
++                return
++            first, last = group[0], group[-1]
++            warnings: list[str] = []
++            for segment in group:
++                language = normalize_language(segment.language)
++                if language_policy == "strict" and language != expected:
++                    raise UnsupportedPlanLanguageError(
++                        f"Pocket bundle language {expected!r} cannot render {language!r}"
++                    )
++                unsupported = _unsupported(segment)
++                if unsupported:
++                    warning = _issue(
++                        directive_policy,
++                        f"Pocket MVP does not implement directives {unsupported} on {segment.id}",
++                    )
++                    if warning:
++                        warnings.append(warning)
++            voice_ref = _voice_ref(first)
++            if voice_ref and voice_bindings is not None and voice_ref not in voice_bindings:
++                raise VoiceBindingError(f"No Pocket voice binding for {voice_ref!r}")
++            spans.append(
++                PreparedPocketSpan(
++                    id=f"{unit.id}:span-{len(spans):03d}",
++                    text=plan.texts.spoken[first.spoken_start:last.spoken_end],
++                    language=first.language,
++                    segment_ids=tuple(s.id for s in group),
++                    spoken_start=first.spoken_start,
++                    spoken_end=last.spoken_end,
++                    pause_before_seconds=float(first.pause_before.seconds),
++                    pause_after_seconds=float(last.pause_after.seconds),
++                    voice_ref=voice_ref,
++                    warnings=tuple(warnings),
++                )
++            )
++            group.clear()
++
++        for segment in unit_segments:
++            if group and not _compatible(group[-1], segment):
++                flush()
++            group.append(segment)
++            if segment.pause_after.seconds > 0 or _unsupported(segment):
++                flush()
++        flush()
++        prepared_units.append(
++            PreparedPocketUnit(
++                plan_unit_id=unit.id,
++                index=unit.index,
++                kind=unit.kind,
++                spoken_start=unit.spoken_start,
++                spoken_end=unit.spoken_end,
++                segment_ids=tuple(unit.segment_ids),
++                marker_ids=tuple(unit.marker_ids),
++                content_hash=unit.content_hash,
++                spans=tuple(spans),
++            )
++        )
++    return tuple(prepared_units)
+diff --git a/pocketsynth/planning.py b/pocketsynth/planning.py
+new file mode 100644
+index 0000000..6ddd5ea
+--- /dev/null
++++ b/pocketsynth/planning.py
+@@ -0,0 +1,46 @@
++from __future__ import annotations
++
++from typing import Literal
++
++from utterplan import PlannerConfig, normalize_language
++
++from .bundle import BundleMetadata
++from .config import PipelineConfig
++
++_LANGUAGE_MAP = {
++    "english_2026-04": "en",
++    "french_24l": "fr",
++    "german": "de",
++    "german_24l": "de",
++    "italian": "it",
++    "italian_24l": "it",
++    "portuguese": "pt",
++    "portuguese_24l": "pt",
++    "spanish": "es",
++    "spanish_24l": "es",
++}
++
++
++def planner_language(metadata: BundleMetadata) -> str:
++    return normalize_language(_LANGUAGE_MAP.get(metadata.language, metadata.language.split("_", 1)[0]))
++
++
++def planner_config_from_pocketsynth(
++    config: PipelineConfig,
++    metadata: BundleMetadata,
++    *,
++    unit: Literal["paragraph", "sentence"] | None = None,
++) -> PlannerConfig:
++    language = config.language or planner_language(metadata)
++    return PlannerConfig(
++        language=normalize_language(language, dict(config.language_aliases)),
++        document_format=config.document_format,
++        text_preparation=config.text_preparation,
++        unit=unit or config.unit,
++        pauses=config.pauses,
++        linguistics=config.linguistics,
++        ssmd=config.ssmd,
++        overlap_mode=config.overlap_mode,
++        language_aliases=dict(config.language_aliases),
++        diagnostics=config.planner_diagnostics,
++    )
+diff --git a/pocketsynth/py.typed b/pocketsynth/py.typed
+new file mode 100644
+index 0000000..e69de29
+diff --git a/pocketsynth/runtime.py b/pocketsynth/runtime.py
+new file mode 100644
+index 0000000..0e0a578
+--- /dev/null
++++ b/pocketsynth/runtime.py
+@@ -0,0 +1,171 @@
++from __future__ import annotations
++
++from pathlib import Path
++from typing import Any, Mapping, Sequence
++
++import numpy as np
++
++from ._onnxvoice import (
++    ResolvedPocketBundle,
++    open_installed_bundle,
++    open_local_bundle,
++    runtime_diagnostics,
++)
++from .bundle import BundleMetadata, BundlePaths, Precision
++from .config import GenerationConfig
++from .diagnostics import RuntimeDiagnostics
++from .errors import ModelInferenceError, PipelineClosedError
++from .frontend import PocketFrontend
++from .voice import PreparedVoice, prepare_voice
++
++
++class PocketRuntime:
++    """Low-level Pocket bundle runtime backed by an OnnxVoice PocketAdapter."""
++
++    def __init__(
++        self,
++        *,
++        paths: BundlePaths | None,
++        metadata: BundleMetadata,
++        tokenizer_path: Path,
++        runtime: Any,
++        bundle_id: str | None = None,
++        precision: str | None = None,
++        source_revision: str | None = None,
++    ) -> None:
++        self.paths = paths
++        self.metadata = metadata
++        self.tokenizer_path = tokenizer_path
++        self.runtime = runtime
++        self.bundle_id = bundle_id or metadata.bundle_name
++        self.precision = precision
++        self.source_revision = source_revision
++        self.frontend = PocketFrontend(tokenizer_path, metadata)
++        self._closed = False
++
++    @classmethod
++    def load(
++        cls,
++        directory: str | Path,
++        *,
++        precision: Precision = "int8",
++        providers: Sequence[Any] | str | None = None,
++        provider_options: Mapping[str, Any] | None = None,
++        session_options: Any | None = None,
++    ) -> "PocketRuntime":
++        paths = BundlePaths.from_directory(directory, precision=precision)
++        runtime = open_local_bundle(
++            paths,
++            providers=providers,
++            provider_options=provider_options,
++            session_options=session_options,
++        )
++        return cls(
++            paths=paths,
++            metadata=paths.metadata,
++            tokenizer_path=paths.tokenizer,
++            runtime=runtime,
++            precision=precision,
++        )
++
++    @classmethod
++    def from_resolved(
++        cls,
++        resolved: ResolvedPocketBundle,
++        *,
++        providers: Sequence[Any] | str | None = None,
++        provider_options: Mapping[str, Any] | None = None,
++        session_options: Any | None = None,
++    ) -> "PocketRuntime":
++        metadata = BundleMetadata.load(resolved.metadata_path)
++        runtime = open_installed_bundle(
++            resolved,
++            providers=providers,
++            provider_options=provider_options,
++            session_options=session_options,
++        )
++        return cls(
++            paths=None,
++            metadata=metadata,
++            tokenizer_path=resolved.tokenizer_path,
++            runtime=runtime,
++            bundle_id=resolved.bundle_id,
++            precision=resolved.precision,
++            source_revision=resolved.source_revision,
++        )
++
++    @property
++    def sample_rate(self) -> int:
++        return self.metadata.sample_rate
++
++    def prepare_voice(self, source: Any) -> PreparedVoice:
++        self._ensure_open()
++        return prepare_voice(self.runtime, source, sample_rate=self.sample_rate)
++
++    def infer_tokens(
++        self,
++        token_ids: Sequence[int],
++        voice: PreparedVoice,
++        generation: GenerationConfig,
++    ) -> np.ndarray:
++        self._ensure_open()
++        if len(token_ids) > self.metadata.max_token_per_chunk:
++            raise ValueError(
++                f"Pocket token sequence has {len(token_ids)} tokens; "
++                f"maximum is {self.metadata.max_token_per_chunk}"
++            )
++        try:
++            result = self.runtime.infer(
++                token_ids,
++                voice_state=voice.state,
++                temperature=generation.temperature,
++                lsd_steps=generation.lsd_steps,
++                max_frames=generation.max_frames,
++                frames_after_eos=(
++                    generation.frames_after_eos
++                    if generation.frames_after_eos is not None
++                    else self.metadata.model_recommended_frames_after_eos
++                ),
++            )
++        except Exception as exc:
++            if isinstance(exc, (ValueError, ModelInferenceError)):
++                raise
++            raise ModelInferenceError("Pocket ONNX inference failed") from exc
++        sample_rate = int(getattr(result, "sample_rate", 0))
++        if sample_rate != self.sample_rate:
++            raise ModelInferenceError(
++                f"runtime sample rate {sample_rate} does not match bundle {self.sample_rate}"
++            )
++        return np.asarray(result.audio, dtype=np.float32)
++
++    @property
++    def diagnostics(self) -> RuntimeDiagnostics:
++        raw = runtime_diagnostics(self.runtime)
++        return RuntimeDiagnostics(
++            bundle_id=self.bundle_id,
++            bundle_path=str(self.paths.root if self.paths is not None else "managed"),
++            sample_rate=self.sample_rate,
++            precision=self.precision,
++            providers_requested=tuple(raw.get("providers_requested", ())),
++            sessions=tuple(raw.get("sessions", ())),
++            source_revision=self.source_revision,
++        )
++
++    def close(self) -> None:
++        if self._closed:
++            return
++        close = getattr(self.runtime, "close", None)
++        if close is not None:
++            close()
++        self._closed = True
++
++    def _ensure_open(self) -> None:
++        if self._closed:
++            raise PipelineClosedError("PocketRuntime is closed")
++
++    def __enter__(self) -> "PocketRuntime":
++        self._ensure_open()
++        return self
++
++    def __exit__(self, *_: object) -> None:
++        self.close()
+diff --git a/pocketsynth/types.py b/pocketsynth/types.py
+new file mode 100644
+index 0000000..ecbbd63
+--- /dev/null
++++ b/pocketsynth/types.py
+@@ -0,0 +1,103 @@
++from __future__ import annotations
++
++from dataclasses import dataclass, field
++from pathlib import Path
++from typing import Any, BinaryIO, Literal
++
++import numpy as np
++from utterplan import UtterancePlan
++
++from .audio import float_to_int16, write_wav
++from .diagnostics import RuntimeDiagnostics, TimingDiagnostics
++from .errors import ModelInferenceError, OptionalDependencyError
++
++
++@dataclass(slots=True)
++class AudioChunk:
++    sample_rate: int
++    audio: np.ndarray
++    token_ids: tuple[int, ...] = ()
++    warnings: tuple[str, ...] = ()
++    metadata: dict[str, Any] = field(default_factory=dict)
++
++    def __post_init__(self) -> None:
++        self.audio = np.asarray(self.audio, dtype=np.float32)
++        if self.audio.ndim != 1 or not np.all(np.isfinite(self.audio)):
++            raise ModelInferenceError("audio must be one-dimensional and finite")
++        self.token_ids = tuple(self.token_ids)
++        self.warnings = tuple(self.warnings)
++        self.metadata = dict(self.metadata)
++
++    @property
++    def duration_seconds(self) -> float:
++        return self.audio.size / self.sample_rate
++
++    @property
++    def int16_bytes(self) -> bytes:
++        return float_to_int16(self.audio).tobytes()
++
++
++@dataclass(slots=True)
++class AudioResult:
++    audio: np.ndarray
++    sample_rate: int
++    source_text: str
++    prepared_text: str
++    plan: UtterancePlan | None = None
++    plan_id: str | None = None
++    chunks: list[AudioChunk] = field(default_factory=list)
++    markers: list[dict[str, Any]] = field(default_factory=list)
++    warnings: tuple[str, ...] = ()
++    diagnostics: RuntimeDiagnostics | None = None
++    timing: TimingDiagnostics | None = None
++    metadata: dict[str, Any] = field(default_factory=dict)
++
++    def __post_init__(self) -> None:
++        self.audio = np.asarray(self.audio, dtype=np.float32)
++        if self.audio.ndim != 1 or not np.all(np.isfinite(self.audio)):
++            raise ModelInferenceError("result audio must be one-dimensional and finite")
++
++    @property
++    def duration_seconds(self) -> float:
++        return self.audio.size / self.sample_rate
++
++    def save_wav(self, target: str | Path | BinaryIO) -> str | Path | BinaryIO:
++        write_wav(target, self.audio, self.sample_rate)
++        return target
++
++    def play(self, *, wait: bool = True) -> None:
++        try:
++            import sounddevice as sd
++        except ModuleNotFoundError as exc:
++            raise OptionalDependencyError(
++                "Audio playback requires sounddevice. Install pocketsynth[playback]."
++            ) from exc
++        sd.play(self.audio, self.sample_rate, blocking=wait)
++
++
++@dataclass(frozen=True, slots=True)
++class AudioUnitDescriptor:
++    index: int
++    unit_kind: Literal["sentence", "paragraph"]
++    text: str
++    char_start: int | None = None
++    char_end: int | None = None
++    plan_unit_id: str | None = None
++    content_hash: str | None = None
++    segment_ids: tuple[str, ...] = ()
++    marker_ids: tuple[str, ...] = ()
++
++
++@dataclass(slots=True)
++class AudioUnitResult:
++    descriptor: AudioUnitDescriptor
++    audio: np.ndarray
++    sample_rate: int
++    token_ids: tuple[int, ...] = ()
++    warnings: tuple[str, ...] = ()
++    metadata: dict[str, Any] = field(default_factory=dict)
++
++    def __post_init__(self) -> None:
++        self.audio = np.asarray(self.audio, dtype=np.float32)
++        if self.audio.ndim != 1 or not np.all(np.isfinite(self.audio)):
++            raise ModelInferenceError("unit audio must be one-dimensional and finite")
+diff --git a/pocketsynth/voice.py b/pocketsynth/voice.py
+new file mode 100644
+index 0000000..aeea406
+--- /dev/null
++++ b/pocketsynth/voice.py
+@@ -0,0 +1,61 @@
++from __future__ import annotations
++
++import wave
++from dataclasses import dataclass, field
++from pathlib import Path
++from typing import Any
++
++import numpy as np
++
++from .audio import as_float32_mono
++from .errors import VoicePromptError
++
++
++@dataclass(frozen=True, slots=True)
++class PreparedVoice:
++    state: Any
++    sample_rate: int
++    source: str | None = None
++    metadata: dict[str, Any] = field(default_factory=dict)
++
++
++def _read_pcm_wav(path: str | Path) -> tuple[np.ndarray, int]:
++    source = Path(path)
++    with wave.open(str(source), "rb") as handle:
++        channels = handle.getnchannels()
++        width = handle.getsampwidth()
++        sample_rate = handle.getframerate()
++        frames = handle.readframes(handle.getnframes())
++    if channels != 1 or width != 2:
++        raise VoicePromptError("MVP WAV voice prompts must be mono 16-bit PCM")
++    audio = np.frombuffer(frames, dtype="<i2").astype(np.float32) / 32768.0
++    return audio, sample_rate
++
++
++def _resample_linear(audio: np.ndarray, source_rate: int, target_rate: int) -> np.ndarray:
++    audio = as_float32_mono(audio)
++    if source_rate == target_rate or not audio.size:
++        return audio
++    target_length = max(1, round(audio.size * target_rate / source_rate))
++    old_x = np.linspace(0.0, 1.0, audio.size, endpoint=True)
++    new_x = np.linspace(0.0, 1.0, target_length, endpoint=True)
++    return np.interp(new_x, old_x, audio).astype(np.float32)
++
++
++def prepare_voice(runtime: Any, source: str | Path | tuple[np.ndarray, int] | PreparedVoice, *, sample_rate: int) -> PreparedVoice:
++    if isinstance(source, PreparedVoice):
++        return source
++    if isinstance(source, tuple):
++        audio, source_rate = source
++        label = None
++    else:
++        audio, source_rate = _read_pcm_wav(source)
++        label = str(source)
++    audio = _resample_linear(audio, int(source_rate), sample_rate)
++    method = getattr(runtime, "prepare_voice", None)
++    if method is None:
++        raise VoicePromptError(
++            "OnnxVoice PocketAdapter must provide prepare_voice(audio, sample_rate=...)"
++        )
++    state = method(audio, sample_rate=sample_rate)
++    return PreparedVoice(state=state, sample_rate=sample_rate, source=label)
+diff --git a/pyproject.toml b/pyproject.toml
+new file mode 100644
+index 0000000..7e849b6
+--- /dev/null
++++ b/pyproject.toml
+@@ -0,0 +1,85 @@
++[build-system]
++requires = ["setuptools>=68", "wheel", "setuptools_scm[toml]>=8"]
++build-backend = "setuptools.build_meta"
++
++[project]
++name = "pocketsynth"
++dynamic = ["version"]
++description = "UtterPlan-aware Python synthesis runtime for Pocket TTS ONNX bundles"
++readme = "README.md"
++requires-python = ">=3.10"
++license = {text = "Apache-2.0"}
++authors = [{name = "Pocketsynth contributors"}]
++dependencies = [
++  "numpy>=1.23",
++  "utterplan>=0.1,<0.2",
++  "sentencepiece>=0.2,<0.3",
++  "onnxvoice>=0.1,<0.3",
++  "audiocompose>=0.1,<0.2",
++]
++keywords = ["tts", "text-to-speech", "pocket-tts", "onnx", "speech", "onnxruntime"]
++classifiers = [
++  "Development Status :: 3 - Alpha",
++  "Intended Audience :: Developers",
++  "License :: OSI Approved :: Apache Software License",
++  "Operating System :: OS Independent",
++  "Programming Language :: Python :: 3",
++  "Programming Language :: Python :: 3.10",
++  "Programming Language :: Python :: 3.11",
++  "Programming Language :: Python :: 3.12",
++  "Programming Language :: Python :: 3.13",
++  "Topic :: Multimedia :: Sound/Audio :: Speech",
++]
++
++[project.optional-dependencies]
++cpu = ["onnxvoice[cpu]>=0.2,<0.3"]
++gpu = ["onnxvoice[gpu]>=0.2,<0.3"]
++playback = ["sounddevice>=0.5,<0.6"]
++dev = [
++  "pytest>=8",
++  "pytest-cov>=5",
++  "ruff>=0.16,<0.17",
++  "mypy>=1.11",
++  "build>=1",
++]
++
++[project.scripts]
++pocketsynth = "pocketsynth.__main__:main"
++
++[tool.setuptools.packages.find]
++where = ["."]
++include = ["pocketsynth*"]
++
++[tool.setuptools.package-data]
++pocketsynth = ["py.typed"]
++
++[tool.setuptools_scm]
++write_to = "pocketsynth/_version.py"
++fallback_version = "0.1.0"
++
++[tool.pytest.ini_options]
++testpaths = ["tests"]
++pythonpath = ["."]
++addopts = "-q --strict-markers"
++markers = [
++  "integration: tests requiring optional runtimes or external bundle assets",
++  "network: tests requiring network access",
++]
++
++[tool.ruff]
++target-version = "py310"
++line-length = 100
++
++[tool.ruff.lint]
++select = ["E", "F", "I", "UP", "B"]
++ignore = ["E501"]
++
++[tool.mypy]
++python_version = "3.13"
++packages = ["pocketsynth"]
++check_untyped_defs = true
++disallow_untyped_defs = true
++warn_unused_ignores = true
++warn_redundant_casts = true
++no_implicit_optional = true
++ignore_missing_imports = true
+diff --git a/tests/test_bundle.py b/tests/test_bundle.py
+new file mode 100644
+index 0000000..78fe451
+--- /dev/null
++++ b/tests/test_bundle.py
+@@ -0,0 +1,37 @@
++import json
++from pathlib import Path
++
++from pocketsynth.bundle import BundleMetadata, BundlePaths
++
++
++def _bundle(tmp_path: Path) -> Path:
++    data = {
++        "bundle_name": "english_2026-04",
++        "language": "english_2026-04",
++        "schema_version": 2,
++        "sample_rate": 24000,
++        "samples_per_frame": 1920,
++        "max_token_per_chunk": 50,
++        "tokenizer_file": "tokenizer.model",
++        "bos_before_voice_file": "bos_before_voice.npy",
++        "predefined_voices": ["alba"],
++    }
++    (tmp_path / "bundle.json").write_text(json.dumps(data))
++    for name in (
++        "tokenizer.model", "bos_before_voice.npy",
++        "flow_lm_main_int8.onnx", "flow_lm_flow_int8.onnx", "mimi_decoder_int8.onnx",
++        "flow_lm_main.onnx", "flow_lm_flow.onnx", "mimi_decoder.onnx",
++        "mimi_encoder.onnx", "text_conditioner.onnx",
++    ):
++        (tmp_path / name).write_bytes(b"x")
++    return tmp_path
++
++
++def test_metadata_and_int8_profile(tmp_path):
++    root = _bundle(tmp_path)
++    metadata = BundleMetadata.load(root / "bundle.json")
++    assert metadata.max_token_per_chunk == 50
++    paths = BundlePaths.from_directory(root, precision="int8")
++    assert paths.flow_lm_main.name.endswith("_int8.onnx")
++    assert paths.mimi_encoder.name == "mimi_encoder.onnx"
++    assert paths.text_conditioner.name == "text_conditioner.onnx"
+diff --git a/tests/test_frontend.py b/tests/test_frontend.py
+new file mode 100644
+index 0000000..54d0e52
+--- /dev/null
++++ b/tests/test_frontend.py
+@@ -0,0 +1,29 @@
++import json
++
++from pocketsynth.bundle import BundleMetadata
++from pocketsynth.frontend import PocketFrontend
++
++
++class FakeProcessor:
++    def EncodeAsIds(self, text):
++        return list(range(len(text.split())))
++
++
++def test_frontend_splits_only_when_token_limit_requires_it(tmp_path):
++    path = tmp_path / "bundle.json"
++    path.write_text(json.dumps({
++        "bundle_name": "test",
++        "language": "en",
++        "schema_version": 2,
++        "sample_rate": 24000,
++        "samples_per_frame": 1920,
++        "max_token_per_chunk": 4,
++        "tokenizer_file": "tokenizer.model",
++        "bos_before_voice_file": "bos.npy",
++    }))
++    metadata = BundleMetadata.load(path)
++    frontend = PocketFrontend("unused", metadata, processor=FakeProcessor())
++    assert frontend.split_for_model("one two three") == ("one two three",)
++    chunks = frontend.split_for_model("one two three four five six")
++    assert chunks == ("one two three four", "five six")
++    assert all(len(frontend.encode(chunk)) <= 4 for chunk in chunks)
+diff --git a/tests/test_onnxvoice_boundary.py b/tests/test_onnxvoice_boundary.py
+new file mode 100644
+index 0000000..a73c7c6
+--- /dev/null
++++ b/tests/test_onnxvoice_boundary.py
+@@ -0,0 +1,17 @@
++import pytest
++
++from pocketsynth._onnxvoice import normalize_pocket_ref, normalize_provider_request
++from pocketsynth.errors import BundleNotFoundError
++
++
++def test_normalize_pocket_ref():
++    assert normalize_pocket_ref("english_2026-04") == "pocket:english_2026-04"
++    assert normalize_pocket_ref("pocket:german") == "pocket:german"
++    with pytest.raises(BundleNotFoundError):
++        normalize_pocket_ref("piper:en_US-lessac-medium")
++
++
++def test_provider_default_is_cpu():
++    providers, options = normalize_provider_request(None, None)
++    assert providers == "CPUExecutionProvider"
++    assert options is None
+diff --git a/tests/test_voice.py b/tests/test_voice.py
+new file mode 100644
+index 0000000..2e86e8c
+--- /dev/null
++++ b/tests/test_voice.py
+@@ -0,0 +1,20 @@
++import wave
++
++import numpy as np
++
++from pocketsynth.voice import _read_pcm_wav, _resample_linear
++
++
++def test_read_wav_and_resample(tmp_path):
++    path = tmp_path / "voice.wav"
++    with wave.open(str(path), "wb") as handle:
++        handle.setnchannels(1)
++        handle.setsampwidth(2)
++        handle.setframerate(16000)
++        handle.writeframes(np.array([0, 1000, -1000, 0], dtype="<i2").tobytes())
++    audio, rate = _read_pcm_wav(path)
++    assert rate == 16000
++    assert audio.dtype == np.float32
++    resampled = _resample_linear(audio, 16000, 24000)
++    assert resampled.ndim == 1
++    assert len(resampled) == 6
