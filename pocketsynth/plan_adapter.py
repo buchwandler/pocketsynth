@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from collections.abc import Mapping
 from dataclasses import dataclass
-from typing import Any, Literal
+from typing import Any, Literal, cast
 
 from utterplan import PlanSegment, UtterancePlan, normalize_language
 
@@ -141,7 +141,7 @@ def prepare_plan(
             PreparedPocketUnit(
                 plan_unit_id=unit.id,
                 index=unit.index,
-                kind=unit.kind,
+                kind=cast(Literal["paragraph", "sentence"], unit.kind),
                 spoken_start=unit.spoken_start,
                 spoken_end=unit.spoken_end,
                 segment_ids=tuple(unit.segment_ids),

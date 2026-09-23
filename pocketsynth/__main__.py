@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import argparse
+from importlib import import_module
 from pathlib import Path
 from typing import Any
 
@@ -72,14 +73,13 @@ def _synthesize(args: argparse.Namespace) -> int:
 
 def _check(args: argparse.Namespace) -> int:
     failures = 0
+    onnxvoice: Any = None
     try:
-        import onnxvoice
-
+        onnxvoice = import_module("onnxvoice")
         print(f"OnnxVoice: {onnxvoice.__version__}")
     except Exception as exc:
         print(f"FAIL OnnxVoice import: {exc}")
         failures += 1
-        onnxvoice = None
 
     available: tuple[str, ...] = ()
     if onnxvoice is not None:
