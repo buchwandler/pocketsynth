@@ -105,7 +105,10 @@ def _map_error(exc: Exception, *, operation: str) -> Exception:
     if name == "PredefinedVoiceError":
         return AssetError(message)
     if name == "OptionalDependencyError":
-        if any(value in message.lower() for value in ("huggingface_hub", "onnxvoice[pocket]", "safetensors")):
+        if any(
+            value in message.lower()
+            for value in ("huggingface_hub", "onnxvoice[pocket]", "safetensors")
+        ):
             message += " For PocketSynth, install pocketsynth[cpu] or pocketsynth[gpu]."
         return OptionalDependencyError(message)
     if name in {"AssetNotFoundError", "NotInstalledError"}:

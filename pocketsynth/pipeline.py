@@ -7,7 +7,13 @@ from pathlib import Path
 from typing import TYPE_CHECKING, Any, Literal
 
 import numpy as np
-from utterplan import UtterancePlan, UtterancePlanner
+from utterplan import (
+    LinguisticsConfig,
+    PauseConfig,
+    SSMDConfig,
+    UtterancePlan,
+    UtterancePlanner,
+)
 
 if TYPE_CHECKING:
     from audiocompose import AudioJob
@@ -182,9 +188,9 @@ class PocketPipeline:
             unit=unit,
             text_preparation=text_preparation,
             document_format=document_format,
-            pauses=pauses,
-            linguistics=linguistics,
-            ssmd=ssmd,
+            pauses=pauses if pauses is not None else PauseConfig(),
+            linguistics=(linguistics if linguistics is not None else LinguisticsConfig()),
+            ssmd=ssmd if ssmd is not None else SSMDConfig(),
             overlap_mode=overlap_mode,
             language_aliases=language_aliases or {},
             planner_diagnostics=planner_diagnostics,
@@ -254,9 +260,9 @@ class PocketPipeline:
             unit=unit,
             text_preparation=text_preparation,
             document_format=document_format,
-            pauses=pauses,
-            linguistics=linguistics,
-            ssmd=ssmd,
+            pauses=pauses if pauses is not None else PauseConfig(),
+            linguistics=(linguistics if linguistics is not None else LinguisticsConfig()),
+            ssmd=ssmd if ssmd is not None else SSMDConfig(),
             overlap_mode=overlap_mode,
             language_aliases=language_aliases or {},
             planner_diagnostics=planner_diagnostics,

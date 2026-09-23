@@ -92,7 +92,6 @@ def test_predefined_voice_errors_remain_actionable(error_name, expected_type) ->
     assert isinstance(caught.value.__cause__, error_type)
 
 
-
 def test_huggingface_dependency_error_explains_pocketsynth_install() -> None:
     error_type = type("OptionalDependencyError", (Exception,), {})
 
@@ -106,6 +105,7 @@ def test_huggingface_dependency_error_explains_pocketsynth_install() -> None:
         match=r"pocketsynth\[cpu\].*pocketsynth\[gpu\]",
     ):
         _call("install", fail)
+
 
 def test_managed_bundle_catalog_voice_names_reach_runtime(tmp_path: Path) -> None:
     bundle = {

@@ -14,7 +14,7 @@ dependencies = [
   "numpy>=1.23",
   "utterplan>=0.2.0,<0.3",
   "sentencepiece>=0.2,<0.3",
-  "onnxvoice>=0.1.11,<0.2",
+  "onnxvoice>=0.1.12,<0.2",
   "audiocompose>=0.1,<0.2",
 ]
 keywords = ["tts", "text-to-speech", "pocket-tts", "onnx", "speech", "onnxruntime"]

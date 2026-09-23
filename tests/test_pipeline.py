@@ -357,4 +357,5 @@ def test_from_pretrained_forwards_cache_and_offline_to_runtime(tmp_path: Path) -
     assert open_runtime.call_args.kwargs["cache_dir"] == cache_dir
     assert open_runtime.call_args.kwargs["offline"] is True
     assert pipeline.predefined_voices == ("alba",)
+    assert pipeline.plan("") is not None
     pipeline.close()
