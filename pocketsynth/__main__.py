@@ -8,7 +8,7 @@ from . import PocketPipeline, __version__
 from ._onnxvoice import normalize_pocket_ref
 from .bundle import BundlePaths
 from .config import GenerationConfig
-from .voice import _read_pcm_wav
+from .voice import _looks_like_path_string, _read_pcm_wav
 
 
 def _providers(values: list[str] | None) -> str | list[str] | None:
@@ -97,9 +97,11 @@ def _check(args: argparse.Namespace) -> int:
         print(f"FAIL requested ORT providers unavailable: {', '.join(missing)}")
         failures += 1
 
+    available_voices: tuple[str, ...] | None = None
     if args.bundle_dir:
         try:
             paths = BundlePaths.from_directory(args.bundle_dir, precision=args.precision)
+            available_voices = paths.metadata.predefined_voices
             print(f"Local bundle: OK ({paths.root}, sample rate {paths.metadata.sample_rate})")
         except Exception as exc:
             print(f"FAIL local bundle: {exc}")
@@ -110,7 +112,10 @@ def _check(args: argparse.Namespace) -> int:
         else:
             try:
                 manager = onnxvoice.OnnxVoice(cache_dir=args.cache_dir, offline=args.offline)
-                manager.resolve(normalize_pocket_ref(args.bundle), quality=args.precision)
+                item = manager.catalog.resolve(
+                    normalize_pocket_ref(args.bundle), quality=args.precision
+                )
+                available_voices = tuple(item.metadata.get("predefined_voice_names") or ())
                 print(f"Catalog: OK ({args.bundle})")
             except Exception as exc:
                 print(f"FAIL catalog bundle {args.bundle!r}: {exc}")
@@ -119,14 +124,30 @@ def _check(args: argparse.Namespace) -> int:
         print("Bundle: not checked (pass --bundle or --bundle-dir)")
 
     if args.voice:
-        try:
-            _, sample_rate = _read_pcm_wav(args.voice)
-            print(f"Voice WAV: OK (mono PCM16, sample rate {sample_rate})")
-        except Exception as exc:
-            print(f"FAIL voice WAV: {exc}")
+        if available_voices is not None and args.voice in available_voices:
+            print(f"Predefined voice: OK ({args.voice})")
+        elif _looks_like_path_string(args.voice):
+            try:
+                _, sample_rate = _read_pcm_wav(args.voice)
+                print(f"Voice WAV: OK (mono PCM16, sample rate {sample_rate})")
+            except Exception as exc:
+                print(f"FAIL voice WAV: {exc}")
+                failures += 1
+        elif available_voices is not None:
+            names = ", ".join(available_voices) or "none"
+            print(
+                f"FAIL predefined voice {args.voice!r} is not declared by the bundle; "
+                f"available voices: {names}"
+            )
             failures += 1
+        elif args.bundle or args.bundle_dir:
+            print("Voice: not checked (bundle metadata unavailable)")
+        else:
+            print(
+                "Voice: not checked (pass --bundle or --bundle-dir to validate a predefined name)"
+            )
     else:
-        print("Voice WAV: not checked (pass --voice)")
+        print("Voice: not checked (pass --voice)")
 
     return 1 if failures else 0
 
@@ -141,7 +162,9 @@ def main(argv: list[str] | None = None) -> int:
     source.add_argument("--bundle")
     source.add_argument("--bundle-dir", type=Path)
     _add_runtime_options(synth)
-    synth.add_argument("--voice", type=Path, required=True, help="mono 16-bit PCM WAV prompt")
+    synth.add_argument(
+        "--voice", required=True, help="bundle-declared voice name or local mono PCM16 WAV path"
+    )
     synth.add_argument("--output", type=Path, required=True)
     synth.add_argument("--cache-dir", type=Path)
     synth.add_argument("--offline", action="store_true")
@@ -149,11 +172,13 @@ def main(argv: list[str] | None = None) -> int:
     synth.add_argument("--force-download", action="store_true")
     synth.add_argument("text")
 
-    check = sub.add_parser("check", help="check dependencies, providers, bundles, and voice WAVs")
+    check = sub.add_parser(
+        "check", help="check dependencies, providers, bundles, predefined voices, and WAVs"
+    )
     check_source = check.add_mutually_exclusive_group()
     check_source.add_argument("--bundle")
     check_source.add_argument("--bundle-dir", type=Path)
-    check.add_argument("--voice", type=Path)
+    check.add_argument("--voice", help="bundle-declared voice name or local mono PCM16 WAV path")
     check.add_argument("--precision", choices=("int8", "fp32"), default="int8")
     check.add_argument("--cache-dir", type=Path)
     check.add_argument("--offline", action="store_true")

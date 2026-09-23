@@ -73,7 +73,8 @@ def synthesize(
     Args:
         text: Text to synthesize.
         bundle: Managed bundle name (e.g. "english_2026-04").
-        voice: Reference voice WAV path or PreparedVoice.
+        voice: Bundle-declared predefined name, reference WAV path, in-memory audio tuple,
+        or PreparedVoice.
         precision: Model precision ("int8" or "fp32").
         temperature: Sampling temperature.
         lsd_steps: LSD steps.
@@ -175,7 +176,8 @@ def synthesize_to_wav(
         text: Text to synthesize.
         output: Output WAV file path.
         bundle: Managed bundle name (e.g. "english_2026-04").
-        voice: Reference voice WAV path or PreparedVoice.
+        voice: Bundle-declared predefined name, reference WAV path, in-memory audio tuple,
+        or PreparedVoice.
         precision: Model precision ("int8" or "fp32").
         temperature: Sampling temperature.
         lsd_steps: LSD steps.

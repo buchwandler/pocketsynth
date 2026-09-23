@@ -35,17 +35,17 @@ class PreparedVoice:
 
 
 def _read_pcm_wav(path: str | Path) -> tuple[np.ndarray, int]:
-    source = Path(path)
     try:
+        source = Path(path)
         with wave.open(str(source), "rb") as handle:
             channels = handle.getnchannels()
             width = handle.getsampwidth()
             sample_rate = handle.getframerate()
             compression = handle.getcomptype()
             frames = handle.readframes(handle.getnframes())
-    except (OSError, EOFError, wave.Error) as exc:
+    except (OSError, EOFError, TypeError, ValueError, wave.Error) as exc:
         raise VoicePromptError(
-            f"Expected mono PCM WAV voice prompt; could not read {source}: {exc}"
+            f"Expected mono PCM WAV voice prompt; could not read {path!s}: {exc}"
         ) from exc
     if channels != 1 or width != 2 or compression != "NONE" or sample_rate <= 0:
         raise VoicePromptError(
@@ -67,14 +67,44 @@ def _resample_linear(audio: np.ndarray, source_rate: int, target_rate: int) -> n
     return np.interp(new_x, old_x, audio).astype(np.float32)
 
 
+def _looks_like_path_string(value: str) -> bool:
+    path = Path(value)
+    return bool(path.suffix) or "/" in value or "\\" in value or path.exists()
+
+
 def prepare_voice(
-    runtime: Any, source: str | Path | tuple[np.ndarray, int] | PreparedVoice, *, sample_rate: int
+    runtime: Any,
+    source: str | Path | tuple[np.ndarray, int] | PreparedVoice,
+    *,
+    sample_rate: int,
+    bundle_id: str | None = None,
+    predefined_voices: tuple[str, ...] = (),
 ) -> PreparedVoice:
     if isinstance(source, PreparedVoice):
         return source
     if isinstance(source, tuple):
         audio, source_rate = source
         label = None
+    elif isinstance(source, str) and source in predefined_voices:
+        method = getattr(runtime, "prepare_predefined_voice", None)
+        if method is None:
+            raise VoicePromptError(
+                "OnnxVoice PocketAdapter must provide prepare_predefined_voice(name)"
+            )
+        state = method(source)
+        return PreparedVoice(
+            state=state,
+            sample_rate=sample_rate,
+            source=source,
+            bundle_id=bundle_id,
+            runtime_fingerprint=bundle_id,
+            metadata={"kind": "predefined", "name": source},
+        )
+    elif isinstance(source, str) and not _looks_like_path_string(source):
+        names = ", ".join(predefined_voices) or "none"
+        raise VoicePromptError(
+            f"Unknown predefined Pocket voice {source!r}. Available voices: {names}."
+        )
     else:
         audio, source_rate = _read_pcm_wav(source)
         label = str(source)

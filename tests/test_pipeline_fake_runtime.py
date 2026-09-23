@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import wave
 
 from pocketsynth.config import PipelineConfig
 from pocketsynth.pipeline import PocketPipeline
@@ -22,11 +23,17 @@ def test_pipeline_fake_runtime_prepares_a_voice_once(tmp_path) -> None:
             }
         )
     )
+    voice_path = tmp_path / "reference.wav"
+    with wave.open(str(voice_path), "wb") as handle:
+        handle.setnchannels(1)
+        handle.setsampwidth(2)
+        handle.setframerate(24_000)
+        handle.writeframes(b"\x00\x00")
     runtime = FakePocketRuntime(metadata=FakeBundleMetadata())
     pipeline = PocketPipeline(PipelineConfig(bundle_dir=tmp_path), runtime=runtime)
 
     with pipeline:
-        prepared = pipeline.set_default_voice("reference.wav")
+        prepared = pipeline.set_default_voice(str(voice_path))
         assert pipeline.prepare_voice(prepared) is prepared
 
     assert runtime._prepare_count == 1

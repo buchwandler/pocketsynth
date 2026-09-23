@@ -60,8 +60,9 @@ def test_synthesize_to_wav_validates_bundle():
         synthesize_to_wav("hello", "out.wav", bundle="", voice="test.wav")
 
 
+@pytest.mark.parametrize("voice", ["alba", "test.wav"])
 @patch("pocketsynth.convenience.PocketPipeline")
-def test_synthesize_to_wav_wires_pipeline(mock_pipeline_cls, tmp_path):
+def test_synthesize_to_wav_wires_pipeline(mock_pipeline_cls, tmp_path, voice):
     """Verify synthesize_to_wav calls the pipeline correctly."""
     mock_pipeline = MagicMock()
     mock_pipeline_cls.from_pretrained.return_value.__enter__ = MagicMock(return_value=mock_pipeline)
@@ -75,11 +76,11 @@ def test_synthesize_to_wav_wires_pipeline(mock_pipeline_cls, tmp_path):
         "Hello",
         output,
         bundle="test-bundle",
-        voice="test.wav",
+        voice=voice,
     )
 
     assert result == output
-    mock_pipeline.set_default_voice.assert_called_once_with("test.wav")
+    mock_pipeline.set_default_voice.assert_called_once_with(voice)
     mock_pipeline.assert_called_once_with("Hello")
 
 

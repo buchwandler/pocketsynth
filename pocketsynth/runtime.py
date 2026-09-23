@@ -1,4 +1,5 @@
 from collections.abc import Mapping, Sequence
+from dataclasses import replace
 from pathlib import Path
 from typing import Any
 
@@ -6,6 +7,7 @@ import numpy as np
 
 from ._onnxvoice import (
     ResolvedPocketBundle,
+    _call,
     open_installed_bundle,
     open_local_bundle,
     runtime_diagnostics,
@@ -13,7 +15,7 @@ from ._onnxvoice import (
 from .bundle import BundleMetadata, BundlePaths, Precision
 from .config import GenerationConfig
 from .diagnostics import RuntimeDiagnostics
-from .errors import ModelInferenceError, PipelineClosedError
+from .errors import ModelInferenceError, PipelineClosedError, UnsupportedBundleError
 from .frontend import PocketFrontend
 from .voice import PreparedVoice, prepare_voice
 
@@ -75,13 +77,38 @@ class PocketRuntime:
         providers: Sequence[Any] | str | None = None,
         provider_options: Mapping[str, Any] | None = None,
         session_options: Any | None = None,
+        cache_dir: str | Path | None = None,
+        offline: bool = False,
     ) -> "PocketRuntime":  # noqa: UP037
         metadata = BundleMetadata.load(resolved.metadata_path)
+        raw_voice_names = resolved.metadata.get("predefined_voice_names")
+        if raw_voice_names is not None:
+            if not isinstance(raw_voice_names, Sequence) or isinstance(
+                raw_voice_names, (str, bytes)
+            ):
+                raise UnsupportedBundleError(
+                    "Pocket catalog predefined_voice_names must be a sequence"
+                )
+            catalog_voice_names = tuple(raw_voice_names)
+            if not all(isinstance(name, str) for name in catalog_voice_names):
+                raise UnsupportedBundleError(
+                    "Pocket catalog predefined_voice_names must contain strings"
+                )
+            if metadata.predefined_voices and set(metadata.predefined_voices) != set(
+                catalog_voice_names
+            ):
+                raise UnsupportedBundleError(
+                    "Pocket bundle and catalog disagree about predefined voice names"
+                )
+            if not metadata.predefined_voices:
+                metadata = replace(metadata, predefined_voices=catalog_voice_names)
         runtime = open_installed_bundle(
             resolved,
             providers=providers,
             provider_options=provider_options,
             session_options=session_options,
+            cache_dir=cache_dir,
+            offline=offline,
         )
         return cls(
             paths=None,
@@ -94,12 +121,29 @@ class PocketRuntime:
         )
 
     @property
+    def predefined_voices(self) -> tuple[str, ...]:
+        return self.metadata.predefined_voices
+
+    @property
     def sample_rate(self) -> int:
         return self.metadata.sample_rate
 
     def prepare_voice(self, source: Any) -> PreparedVoice:
         self._ensure_open()
-        voice = prepare_voice(self.runtime, source, sample_rate=self.sample_rate)
+
+        def load_voice() -> PreparedVoice:
+            return prepare_voice(
+                self.runtime,
+                source,
+                sample_rate=self.sample_rate,
+                bundle_id=self.bundle_id,
+                predefined_voices=self.predefined_voices,
+            )
+
+        if isinstance(source, str) and source in self.predefined_voices:
+            voice = _call("prepare_voice", load_voice)
+        else:
+            voice = load_voice()
         voice.validate_compatible(bundle_id=self.bundle_id, sample_rate=self.sample_rate)
         if voice.bundle_id == self.bundle_id:
             return voice

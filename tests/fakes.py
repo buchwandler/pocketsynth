@@ -23,18 +23,32 @@ class FakePocketRuntime:
     _closed: bool = field(default=False, init=False)
     _infer_count: int = field(default=0, init=False)
     _prepare_count: int = field(default=0, init=False)
+    _predefined_prepare_count: int = field(default=0, init=False)
 
     def prepare_voice(self, source: Any, *, sample_rate: int | None = None) -> PreparedVoice:
         """Return a deterministic fake PreparedVoice."""
-        self._prepare_count += 1
         if isinstance(source, PreparedVoice):
             return source
+        if isinstance(source, str) and source in getattr(self.metadata, "predefined_voices", ()):
+            return PreparedVoice(
+                state=self.prepare_predefined_voice(source),
+                sample_rate=sample_rate or self.sample_rate,
+                source=source,
+                bundle_id=self.bundle_id,
+                runtime_fingerprint=self.bundle_id,
+                metadata={"kind": "predefined", "name": source},
+            )
+        self._prepare_count += 1
         return PreparedVoice(
             state={"fake": True},
             sample_rate=sample_rate or self.sample_rate,
             source=str(source) if source else None,
             bundle_id=self.bundle_id,
         )
+
+    def prepare_predefined_voice(self, name: str) -> Any:
+        self._predefined_prepare_count += 1
+        return {"predefined": name}
 
     def infer(
         self,

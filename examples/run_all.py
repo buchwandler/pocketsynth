@@ -15,6 +15,7 @@ _PROJECT_ROOT = _EXAMPLES_DIR.parent
 _ARTEFACT_DIR = _PROJECT_ROOT / "example-artefacts"
 
 EXAMPLES = (
+    ("predefined_voice.py", "managed", False),
     ("quickstart.py", "managed", False),
     ("local_bundle.py", "local", False),
     ("basic.py", "managed", True),
@@ -134,8 +135,15 @@ def main(argv: list[str] | None = None) -> int:
         runnable.append(example)
 
     if runnable and not voice:
-        print("ERROR: Set POCKETSYNTH_EXAMPLE_VOICE to a mono 16-bit PCM reference WAV.")
-        return 1
+        predefined = [example for example in runnable if example[0] == "predefined_voice.py"]
+        if predefined:
+            for name, _kind, _needs_plan in runnable:
+                if name != "predefined_voice.py":
+                    print(f"SKIP {name} (POCKETSYNTH_EXAMPLE_VOICE not set)")
+            runnable = predefined
+        else:
+            print("ERROR: Set POCKETSYNTH_EXAMPLE_VOICE to a mono 16-bit PCM reference WAV.")
+            return 1
     if not runnable:
         print("No examples to run. Configure a local bundle or pass --include-network.")
         return 0

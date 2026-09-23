@@ -132,6 +132,11 @@ class PocketPipeline:
             else BundleMetadata.load(config.bundle_dir / "bundle.json")
         )
 
+    @property
+    def predefined_voices(self) -> tuple[str, ...]:
+        """Return predefined voice names declared by this bundle."""
+        return self._bundle_metadata.predefined_voices
+
     @classmethod
     def load(
         cls,
@@ -235,6 +240,8 @@ class PocketPipeline:
             providers=providers,
             provider_options=provider_options,
             session_options=session_options,
+            cache_dir=cache_dir,
+            offline=bool(offline),
         )
         config = PipelineConfig(
             bundle_dir=resolved.path,

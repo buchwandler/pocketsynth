@@ -45,7 +45,7 @@ def _make_config(tmp_path: Path) -> PipelineConfig:
 def _make_pipeline(tmp_path: Path) -> tuple[PocketPipeline, FakePocketRuntime]:
     """Create a PocketPipeline with a fake runtime."""
     config = _make_config(tmp_path)
-    runtime = FakePocketRuntime(metadata=FakeBundleMetadata())
+    runtime = FakePocketRuntime(metadata=FakeBundleMetadata(predefined_voices=("alba",)))
     pipeline = PocketPipeline(config, runtime=runtime)
     return pipeline, runtime
 
@@ -279,6 +279,7 @@ def test_timing_fields_are_consistent(tmp_path):
 
 def test_prepared_voice_is_reused_without_reencoding(tmp_path):
     pipeline, runtime = _make_pipeline(tmp_path)
+    assert pipeline.predefined_voices == ("alba",)
     voice = make_test_voice()
     pipeline.set_default_voice(voice)
 
@@ -286,10 +287,13 @@ def test_prepared_voice_is_reused_without_reencoding(tmp_path):
     assert pipeline._default_voice is voice
 
 
-def test_prepared_voice_is_encoded_once_for_multiple_calls(tmp_path):
+def test_predefined_voice_is_prepared_once_for_multiple_calls(tmp_path):
     pipeline, runtime = _make_pipeline(tmp_path)
-    with pipeline:
-        pipeline.set_default_voice("voice.wav")
+    with (
+        pipeline,
+        patch("pocketsynth.voice._read_pcm_wav") as read_wav,
+    ):
+        pipeline.set_default_voice("alba")
         with patch("pocketsynth.pipeline.adapt_plan", return_value=()):
             with patch("pocketsynth.pipeline.build_audio_job", return_value=(MagicMock(), ())):
                 with patch("audiocompose.Composer") as mock_composer:
@@ -299,7 +303,10 @@ def test_prepared_voice_is_encoded_once_for_multiple_calls(tmp_path):
                     )
                     pipeline.run("First sentence.")
                     pipeline.run("Second sentence.")
-    assert runtime._prepare_count == 1
+        read_wav.assert_not_called()
+    assert runtime._predefined_prepare_count == 1
+    assert runtime._prepare_count == 0
+    assert pipeline._default_voice.metadata == {"kind": "predefined", "name": "alba"}
 
 
 def test_prepared_voice_from_incompatible_runtime_is_rejected():
@@ -327,3 +334,27 @@ def test_call_delegates_to_run(tmp_path):
             mock_run.return_value = MagicMock()
             pipeline("test", voice=voice)
             mock_run.assert_called_once_with("test", voice=voice)
+
+
+def test_from_pretrained_forwards_cache_and_offline_to_runtime(tmp_path: Path) -> None:
+    resolved = MagicMock()
+    resolved.path = tmp_path
+    runtime = FakePocketRuntime(metadata=FakeBundleMetadata(predefined_voices=("alba",)))
+    cache_dir = tmp_path / "cache"
+
+    with (
+        patch("pocketsynth.pipeline.install_pretrained_bundle", return_value=resolved) as install,
+        patch(
+            "pocketsynth.pipeline.PocketRuntime.from_resolved", return_value=runtime
+        ) as open_runtime,
+    ):
+        pipeline = PocketPipeline.from_pretrained(
+            "english_2026-04", cache_dir=cache_dir, offline=True
+        )
+
+    assert install.call_args.kwargs["cache_dir"] == cache_dir
+    assert install.call_args.kwargs["offline"] is True
+    assert open_runtime.call_args.kwargs["cache_dir"] == cache_dir
+    assert open_runtime.call_args.kwargs["offline"] is True
+    assert pipeline.predefined_voices == ("alba",)
+    pipeline.close()

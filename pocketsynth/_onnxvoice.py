@@ -90,6 +90,16 @@ def normalize_provider_request(
 def _map_error(exc: Exception, *, operation: str) -> Exception:
     name = type(exc).__name__
     message = str(exc) or name
+    if name in {"PredefinedVoiceAccessError", "AssetDownloadError"}:
+        return AssetDownloadError(message)
+    if name == "PredefinedVoiceNotFoundError":
+        return AssetDownloadError(message)
+    if name == "PredefinedVoiceIntegrityError":
+        return AssetCacheError(message)
+    if name == "PredefinedVoiceError":
+        return AssetError(message)
+    if name == "OptionalDependencyError":
+        return OptionalDependencyError(message)
     if name in {"AssetNotFoundError", "NotInstalledError"}:
         return BundleNotFoundError(message)
     if name == "OfflineError":
@@ -182,10 +192,12 @@ def open_installed_bundle(
     providers: Sequence[Any] | str | None = None,
     provider_options: Mapping[str, Any] | None = None,
     session_options: Any | None = None,
+    cache_dir: str | Path | None = None,
+    offline: bool = False,
 ) -> Any:
     requested, options = normalize_provider_request(providers, provider_options)
     module = _onnxvoice()
-    manager = module.OnnxVoice()
+    manager = module.OnnxVoice(cache_dir=cache_dir, offline=offline)
     return _call(
         "open",
         lambda: manager.open(

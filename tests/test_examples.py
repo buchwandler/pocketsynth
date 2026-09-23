@@ -17,6 +17,7 @@ def test_example_runner_lists_first_wav_paths() -> None:
     )
 
     assert "quickstart.py\tmanaged" in result.stdout
+    assert "predefined_voice.py\tmanaged" in result.stdout
     assert "local_bundle.py\tlocal" in result.stdout
 
 
