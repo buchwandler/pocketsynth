@@ -46,6 +46,8 @@ synthesize_to_wav(
 
 `PocketPipeline.predefined_voices` lists the names declared by the selected bundle. A declaration means the voice is compatible with that bundle, not that its separate upstream state asset is available or that your account has access to it. Some voice-state assets are gated. Accept the upstream access terms and configure Hugging Face authentication before the first online run. OnnxVoice owns voice downloads and caching.
 
+The `pocketsynth[cpu]` and `pocketsynth[gpu]` extras include OnnxVoice's optional Hugging Face and Safetensors support. For a gated voice, accept access on the upstream model page and authenticate the same account used by the application with `hf auth login` or `HF_TOKEN`. OnnxVoice does not initiate login or store tokens. To inspect local package, credential, and offline status without a network request, run `onnxvoice doctor --system pocket`; it does not test gated-repository access. See the OnnxVoice Pocket download guide for more details.
+
 `pocketsynth check --bundle english_2026-04 --voice alba` validates the bundle's declared name without installing model files.
 
 Both the bundle files and voice state must be cached before using `--offline`:

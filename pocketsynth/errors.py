@@ -26,6 +26,10 @@ class AssetDownloadError(AssetError):
     pass
 
 
+class AssetAccessError(AssetDownloadError):
+    """A remote Pocket asset requires credentials or repository access."""
+
+
 class AssetCacheError(AssetError):
     pass
 

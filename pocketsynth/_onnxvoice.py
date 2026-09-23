@@ -8,6 +8,7 @@ from typing import Any
 from .asset_progress import AssetProgressCallback, adapt_asset_progress
 from .bundle import BundlePaths, Precision
 from .errors import (
+    AssetAccessError,
     AssetCacheError,
     AssetDownloadError,
     AssetError,
@@ -90,15 +91,22 @@ def normalize_provider_request(
 def _map_error(exc: Exception, *, operation: str) -> Exception:
     name = type(exc).__name__
     message = str(exc) or name
-    if name in {"PredefinedVoiceAccessError", "AssetDownloadError"}:
-        return AssetDownloadError(message)
-    if name == "PredefinedVoiceNotFoundError":
+    if name in {
+        "PredefinedVoiceAccessError",
+        "AssetAccessError",
+        "AssetAuthenticationError",
+        "AssetPermissionError",
+    }:
+        return AssetAccessError(message)
+    if name in {"AssetDownloadError", "PredefinedVoiceNotFoundError"}:
         return AssetDownloadError(message)
     if name == "PredefinedVoiceIntegrityError":
         return AssetCacheError(message)
     if name == "PredefinedVoiceError":
         return AssetError(message)
     if name == "OptionalDependencyError":
+        if any(value in message.lower() for value in ("huggingface_hub", "onnxvoice[pocket]", "safetensors")):
+            message += " For PocketSynth, install pocketsynth[cpu] or pocketsynth[gpu]."
         return OptionalDependencyError(message)
     if name in {"AssetNotFoundError", "NotInstalledError"}:
         return BundleNotFoundError(message)

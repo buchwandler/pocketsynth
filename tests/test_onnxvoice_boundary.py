@@ -12,11 +12,13 @@ from pocketsynth._onnxvoice import (
     open_installed_bundle,
 )
 from pocketsynth.errors import (
+    AssetAccessError,
     AssetCacheError,
     AssetDownloadError,
     BundleNotFoundError,
     ModelInferenceError,
     OfflineAssetError,
+    OptionalDependencyError,
     UnsupportedBundleError,
 )
 from pocketsynth.runtime import PocketRuntime
@@ -73,7 +75,7 @@ def test_runtime_error_mapping_preserves_cause():
 @pytest.mark.parametrize(
     ("error_name", "expected_type"),
     [
-        ("PredefinedVoiceAccessError", AssetDownloadError),
+        ("PredefinedVoiceAccessError", AssetAccessError),
         ("PredefinedVoiceNotFoundError", AssetDownloadError),
         ("PredefinedVoiceIntegrityError", AssetCacheError),
         ("OfflineError", OfflineAssetError),
@@ -89,6 +91,21 @@ def test_predefined_voice_errors_remain_actionable(error_name, expected_type) ->
         _call("prepare_voice", fail)
     assert isinstance(caught.value.__cause__, error_type)
 
+
+
+def test_huggingface_dependency_error_explains_pocketsynth_install() -> None:
+    error_type = type("OptionalDependencyError", (Exception,), {})
+
+    def fail() -> None:
+        raise error_type(
+            "Remote Pocket downloads require Hugging Face support. Install 'onnxvoice[pocket]'."
+        )
+
+    with pytest.raises(
+        OptionalDependencyError,
+        match=r"pocketsynth\[cpu\].*pocketsynth\[gpu\]",
+    ):
+        _call("install", fail)
 
 def test_managed_bundle_catalog_voice_names_reach_runtime(tmp_path: Path) -> None:
     bundle = {
