@@ -3,7 +3,7 @@ schema_version: 2
 object_type: release
 versioning:
   schema_version: 1
-  revision: 5
+  revision: 7
 version: v0.1.0
 status: released
 history_state: curated
@@ -16,12 +16,12 @@ changelog_file: docs/changelog.md
 boundary_ref: null
 source_refs: []
 source_count: null
-entry_count: 6
+entry_count: 9
 artifact_count: 0
 git_base_ref: 9f895e09ce38032a6dc29f41a01b72c9b5f99ff5
 git_base_sha: 9f895e09ce38032a6dc29f41a01b72c9b5f99ff5
-git_head_ref: b97d1715bff5a4f3ea3d5dad49f3c9f8b5454a9e
-git_head_sha: b97d1715bff5a4f3ea3d5dad49f3c9f8b5454a9e
-git_range: 9f895e09ce38032a6dc29f41a01b72c9b5f99ff5..b97d1715bff5a4f3ea3d5dad49f3c9f8b5454a9e
-git_commit_count: 5
+git_head_ref: HEAD
+git_head_sha: 5fc1b11316733381dabc78deb838715290d397dd
+git_range: 9f895e09ce38032a6dc29f41a01b72c9b5f99ff5..5fc1b11316733381dabc78deb838715290d397dd
+git_commit_count: 11
 ---

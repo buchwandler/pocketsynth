@@ -2,14 +2,14 @@ schema_version: 1
 object_type: commit_audit_sheet
 versioning:
   schema_version: 1
-  revision: 4
+  revision: 7
 release_version: v0.1.0
 git_base_ref: 9f895e09ce38032a6dc29f41a01b72c9b5f99ff5
 git_base_sha: 9f895e09ce38032a6dc29f41a01b72c9b5f99ff5
-git_head_ref: b97d1715bff5a4f3ea3d5dad49f3c9f8b5454a9e
-git_head_sha: b97d1715bff5a4f3ea3d5dad49f3c9f8b5454a9e
-git_range: 9f895e09ce38032a6dc29f41a01b72c9b5f99ff5..b97d1715bff5a4f3ea3d5dad49f3c9f8b5454a9e
-commit_count: 5
+git_head_ref: HEAD
+git_head_sha: 5fc1b11316733381dabc78deb838715290d397dd
+git_range: 9f895e09ce38032a6dc29f41a01b72c9b5f99ff5..5fc1b11316733381dabc78deb838715290d397dd
+commit_count: 11
 rows:
   - sha: 39e784b8667537278d1409ba060d6b1dd1918b53
     source_ref: git:39e784b8667537278d1409ba060d6b1dd1918b53
@@ -263,3 +263,232 @@ rows:
     evidence_subject: "feat: improve example and usage"
     target_entry_id: entry-0004
     notes: Covered by the quickstart and dependency compatibility entries.
+  - sha: b0d174a3406eebc14ea0b2aa320f4054592e0aa4
+    source_ref: git:b0d174a3406eebc14ea0b2aa320f4054592e0aa4
+    short_sha: b0d174a
+    changed_paths:
+      - .github/workflows/ci.yml
+      - .github/workflows/codecov.yml
+      - .github/workflows/pre-commit.yml
+      - .github/workflows/python-publish.yml
+      - .github/workflows/tests.yml
+      - .ledger/releaseledger/config.toml
+      - .ledger/releaseledger/data/ledgers/main/events/events.jsonl
+      - .ledger/releaseledger/data/ledgers/main/releases/v0.1.0/audit/commit-audit.yaml
+      - .ledger/releaseledger/data/ledgers/main/releases/v0.1.0/entries/entry-0001.md
+      - .ledger/releaseledger/data/ledgers/main/releases/v0.1.0/entries/entry-0002.md
+      - .ledger/releaseledger/data/ledgers/main/releases/v0.1.0/entries/entry-0003.md
+      - .ledger/releaseledger/data/ledgers/main/releases/v0.1.0/entries/entry-0004.md
+      - .ledger/releaseledger/data/ledgers/main/releases/v0.1.0/entries/entry-0005.md
+      - .ledger/releaseledger/data/ledgers/main/releases/v0.1.0/entries/entry-0006.md
+      - .ledger/releaseledger/data/ledgers/main/releases/v0.1.0/release.md
+      - .ledger/releaseledger/work/v0.1.0/audit-decisions.yaml
+      - .ledger/releaseledger/work/v0.1.0/audit.yaml
+      - .ledger/releaseledger/work/v0.1.0/entries.yaml
+      - .ledger/releaseledger/work/v0.1.0/evidence/30567e6.patch
+      - .ledger/releaseledger/work/v0.1.0/evidence/39e784b.patch
+      - .ledger/releaseledger/work/v0.1.0/evidence/b97d171.patch
+      - .ledger/releaseledger/work/v0.1.0/evidence/e21edbd.patch
+      - .ledger/releaseledger/work/v0.1.0/evidence/f13908f.patch
+      - .ledger/releaseledger/work/v0.1.0/evidence/manifest.json
+      - .ledger/releaseledger/work/v0.1.0/range.json
+      - .ledger/releaseledger/write.lock
+      - README.md
+      - docs/changelog.md
+      - docs/onnxvoice-pocket-support-implementation-brief.md
+      - pocketsynth/__main__.py
+      - pocketsynth/audio_job.py
+      - pocketsynth/pipeline.py
+      - pyproject.toml
+    stats:
+      files_changed: 33
+      insertions: 9903
+      deletions: 35
+    inspected: true
+    inspected_paths:
+      - pyproject.toml
+      - README.md
+      - pocketsynth/pipeline.py
+      - pocketsynth/audio_job.py
+      - docs/onnxvoice-pocket-support-implementation-brief.md
+      - .github/workflows/tests.yml
+    observed_behavior:
+      Sets the supported OnnxVoice dependency floor for Pocket bundle
+      support, records explicit AudioJob return types, and establishes separate test,
+      publishing, coverage, and pre-commit workflows.
+    public_impact: public
+    decision: accepted
+    stale: false
+    evidence_subject: "feat: prepare for release"
+    target_entry_key: dependency-compatibility
+    target_entry_id: entry-0005
+    notes:
+      Coverage belongs to the existing supported dependency entry; workflow setup
+      is not a separate user-facing change.
+  - sha: 452ffe9bcc4a1ce2fdef14659473f8de569aab70
+    source_ref: git:452ffe9bcc4a1ce2fdef14659473f8de569aab70
+    short_sha: 452ffe9
+    changed_paths:
+      - .ledger/releaseledger/data/ledgers/main/releases/v0.1.0/audit/commit-audit.yaml
+      - .ledger/releaseledger/data/ledgers/main/releases/v0.1.0/entries/entry-0001.md
+      - .ledger/releaseledger/data/ledgers/main/releases/v0.1.0/entries/entry-0002.md
+      - .ledger/releaseledger/data/ledgers/main/releases/v0.1.0/entries/entry-0003.md
+      - .ledger/releaseledger/data/ledgers/main/releases/v0.1.0/entries/entry-0004.md
+      - .ledger/releaseledger/data/ledgers/main/releases/v0.1.0/entries/entry-0005.md
+      - .ledger/releaseledger/data/ledgers/main/releases/v0.1.0/entries/entry-0006.md
+      - .ledger/releaseledger/data/ledgers/main/releases/v0.1.0/release.md
+      - .ledger/releaseledger/work/v0.1.0/audit-decisions.yaml
+      - README.md
+      - docs/changelog.md
+    stats:
+      files_changed: 11
+      insertions: 377
+      deletions: 361
+    inspected: true
+    inspected_paths:
+      - README.md
+      - docs/changelog.md
+      - .ledger/releaseledger/data/ledgers/main/releases/v0.1.0/release.md
+    observed_behavior:
+      Applies formatting and adds project status badges; it does not
+      change runtime behavior.
+    public_impact: internal
+    decision: internal
+    stale: false
+    evidence_subject: "chore: pre-commit"
+    notes:
+      Formatting, badges, and release-ledger serialization changes do not warrant
+      a release note.
+  - sha: 2799d91c786c5818321e51ada76fc288ec05ae01
+    source_ref: git:2799d91c786c5818321e51ada76fc288ec05ae01
+    short_sha: 2799d91
+    changed_paths:
+      - .github/workflows/tests.yml
+    stats:
+      files_changed: 1
+      insertions: 2
+      deletions: 2
+    inspected: true
+    inspected_paths:
+      - .github/workflows/tests.yml
+    observed_behavior:
+      Changes CI to run mypy over the package rather than only the
+      public API type-check fixture.
+    public_impact: internal
+    decision: internal
+    stale: false
+    evidence_subject: "chore: fix mypy"
+    notes: CI validation change only.
+  - sha: 2722123953e5df6d448508b7b55ffd7f467b7868
+    source_ref: git:2722123953e5df6d448508b7b55ffd7f467b7868
+    short_sha: "2722123"
+    changed_paths:
+      - README.md
+      - examples/README.md
+      - examples/predefined_voice.py
+      - examples/run_all.py
+      - pocketsynth/__main__.py
+      - pocketsynth/_onnxvoice.py
+      - pocketsynth/convenience.py
+      - pocketsynth/pipeline.py
+      - pocketsynth/runtime.py
+      - pocketsynth/voice.py
+      - pyproject.toml
+      - tests/fakes.py
+      - tests/integration/test_real_predefined_voice_wav.py
+      - tests/test_cli.py
+      - tests/test_convenience.py
+      - tests/test_examples.py
+      - tests/test_onnxvoice_boundary.py
+      - tests/test_pipeline.py
+      - tests/test_pipeline_fake_runtime.py
+      - tests/test_voice.py
+    stats:
+      files_changed: 20
+      insertions: 724
+      deletions: 67
+    inspected: true
+    inspected_paths:
+      - pocketsynth/voice.py
+      - pocketsynth/runtime.py
+      - pocketsynth/pipeline.py
+      - pocketsynth/__main__.py
+      - examples/predefined_voice.py
+      - README.md
+      - examples/README.md
+      - tests/integration/test_real_predefined_voice_wav.py
+    observed_behavior:
+      Allows selecting bundle-declared predefined voices in the pipeline,
+      convenience API, and CLI, and adds a managed predefined-voice example with offline
+      reuse guidance.
+    public_impact: public
+    decision: accepted
+    stale: false
+    evidence_subject: "feat: add predifned voice selection"
+    target_entry_key: predefined-voices
+    target_entry_id: entry-0007
+    notes: New public voice-selection capability.
+  - sha: bcedf2801b5437e0a236dcce8a788308e588a7e3
+    source_ref: git:bcedf2801b5437e0a236dcce8a788308e588a7e3
+    short_sha: bcedf28
+    changed_paths:
+      - README.md
+      - pocketsynth/_onnxvoice.py
+      - pocketsynth/errors.py
+      - tests/test_onnxvoice_boundary.py
+    stats:
+      files_changed: 4
+      insertions: 35
+      deletions: 4
+    inspected: true
+    inspected_paths:
+      - pocketsynth/_onnxvoice.py
+      - pocketsynth/errors.py
+      - README.md
+      - tests/test_onnxvoice_boundary.py
+    observed_behavior:
+      Distinguishes access and authentication failures from other asset
+      errors and documents the optional dependencies and account setup required for
+      gated voice assets.
+    public_impact: public
+    decision: accepted
+    stale: false
+    evidence_subject: "feat: adapt to onnxvoice changes"
+    target_entry_key: voice-access-guidance
+    target_entry_id: entry-0008
+    notes: Actionable errors and setup guidance for gated predefined voice assets.
+  - sha: 5fc1b11316733381dabc78deb838715290d397dd
+    source_ref: git:5fc1b11316733381dabc78deb838715290d397dd
+    short_sha: 5fc1b11
+    changed_paths:
+      - .gitignore
+      - example-artefacts/.gitkeep
+      - pocketsynth/_onnxvoice.py
+      - pocketsynth/pipeline.py
+      - pyproject.toml
+      - tests/test_onnxvoice_boundary.py
+      - tests/test_pipeline.py
+    stats:
+      files_changed: 7
+      insertions: 24
+      deletions: 10
+    inspected: true
+    inspected_paths:
+      - pocketsynth/pipeline.py
+      - pocketsynth/_onnxvoice.py
+      - pyproject.toml
+      - tests/test_pipeline.py
+      - tests/test_onnxvoice_boundary.py
+    observed_behavior:
+      Raises the supported OnnxVoice floor to 0.1.12, supplies default
+      UtterPlan configuration objects when omitted, and improves guidance for missing
+      voice-download dependencies.
+    public_impact: public
+    decision: accepted
+    stale: false
+    evidence_subject: "feat: prepare release"
+    target_entry_key: omitted-planning-configs
+    target_entry_id: entry-0009
+    notes:
+      Coverage owner for the planning default fix; attach this commit as supporting
+      evidence to dependency compatibility and predefined voice access entries.
