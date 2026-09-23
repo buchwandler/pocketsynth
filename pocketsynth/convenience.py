@@ -33,7 +33,7 @@ def _save_wav_atomically(result: AudioResult, destination: Path) -> None:
 
     try:
         write_wav(temporary, result.audio, result.sample_rate)
-        with temporary.open("rb") as handle:
+        with temporary.open("rb+") as handle:
             os.fsync(handle.fileno())
         temporary.replace(destination)
     finally:
