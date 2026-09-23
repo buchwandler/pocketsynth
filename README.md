@@ -1,3 +1,8 @@
+[![PyPI - Version](https://img.shields.io/pypi/v/pocketsynth)](https://pypi.org/project/pocketsynth/)
+![PyPI - Python Version](https://img.shields.io/pypi/pyversions/pocketsynth)
+![PyPI - Downloads](https://img.shields.io/pypi/dm/pocketsynth)
+[![codecov](https://codecov.io/gh/buchwandler/pocketsynth/graph/badge.svg?token=ticsUMNuF8)](https://codecov.io/gh/buchwandler/pocketsynth)
+
 # pocketsynth
 
 `pocketsynth` is an UtterPlan-aware Python runtime for Pocket TTS ONNX bundles. It turns text and a reference voice WAV into a WAV file while delegating asset management and model execution to OnnxVoice.

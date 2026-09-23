@@ -12,15 +12,15 @@ status: accepted
 audience: null
 scopes: []
 source_refs:
-- git:e21edbdc1df754b113f6da5f7567f68b4597e406
+  - git:e21edbdc1df754b113f6da5f7567f68b4597e406
 paths:
-- .pre-commit-config.yaml
-- pocketsynth/pipeline.py
-- pocketsynth/runtime.py
+  - .pre-commit-config.yaml
+  - pocketsynth/pipeline.py
+  - pocketsynth/runtime.py
 issues: []
 prs: []
 sources:
-- git:e21edbdc1df754b113f6da5f7567f68b4597e406
+  - git:e21edbdc1df754b113f6da5f7567f68b4597e406
 contributors: []
 breaking: false
 internal: true

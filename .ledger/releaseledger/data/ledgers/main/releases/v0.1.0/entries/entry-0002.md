@@ -12,15 +12,15 @@ status: accepted
 audience: null
 scopes: []
 source_refs:
-- git:f13908faf4a8f282e8a3ab2509903b589a7d8d0f
+  - git:f13908faf4a8f282e8a3ab2509903b589a7d8d0f
 paths:
-- pocketsynth/convenience.py
-- pocketsynth/types.py
-- examples/README.md
+  - pocketsynth/convenience.py
+  - pocketsynth/types.py
+  - examples/README.md
 issues: []
 prs: []
 sources:
-- git:f13908faf4a8f282e8a3ab2509903b589a7d8d0f
+  - git:f13908faf4a8f282e8a3ab2509903b589a7d8d0f
 contributors: []
 breaking: false
 internal: false

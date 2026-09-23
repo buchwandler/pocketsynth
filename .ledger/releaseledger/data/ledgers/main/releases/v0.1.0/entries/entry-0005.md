@@ -7,18 +7,19 @@ versioning:
 entry_id: entry-0005
 release_version: v0.1.0
 kind: changed
-summary: Changed minimum supported OnnxVoice and UtterPlan versions to the Pocket-capable
+summary:
+  Changed minimum supported OnnxVoice and UtterPlan versions to the Pocket-capable
   API releases
 status: accepted
 audience: null
 scopes: []
 source_refs: []
 paths:
-- pyproject.toml
+  - pyproject.toml
 issues: []
 prs: []
 sources:
-- git:b97d1715bff5a4f3ea3d5dad49f3c9f8b5454a9e
+  - git:b97d1715bff5a4f3ea3d5dad49f3c9f8b5454a9e
 contributors: []
 breaking: false
 internal: false
