@@ -20,8 +20,8 @@ jobs:
         pip install pytest ruff mypy
         pip install -e ".[cpu,dev]"
         python -m compileall -q pocketsynth tests
-    - name: Type-check public API
+    - name: Type-check package
       if: matrix.os == 'ubuntu-latest' && matrix.python-version == '3.13'
-      run: python -m mypy --config-file tests/typecheck/mypy.ini tests/typecheck/public_api.py
+      run: python -m mypy --config-file pyproject.toml pocketsynth
     - name: Tests
       run: pytest -m "not slow"
