@@ -13,7 +13,7 @@ from pocketsynth.voice import PreparedVoice
 
 @dataclass
 class FakePocketRuntime:
-    """In-memory fake Pocket runtime for testing PocketPipeline without ONNX."""
+    """In-memory fake Pocket runtime for testing without ONNX."""
 
     sample_rate: int = 24_000
     bundle_id: str = "fake-pocket"

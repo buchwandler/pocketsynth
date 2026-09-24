@@ -5,7 +5,7 @@ from importlib import import_module
 from pathlib import Path
 from typing import Any
 
-from . import PocketPipeline, __version__
+from . import PocketRuntime, __version__
 from ._onnxvoice import normalize_pocket_ref
 from .bundle import BundlePaths
 from .config import GenerationConfig
@@ -24,11 +24,6 @@ def _add_runtime_options(parser: argparse.ArgumentParser) -> None:
     parser.add_argument("--lsd-steps", type=int, default=1)
     parser.add_argument("--max-frames", type=int)
     parser.add_argument("--frames-after-eos", type=int)
-    normalize = parser.add_mutually_exclusive_group()
-    normalize.add_argument("--normalize-audio", dest="normalize_audio", action="store_true")
-    normalize.add_argument("--no-normalize-audio", dest="normalize_audio", action="store_false")
-    parser.set_defaults(normalize_audio=False)
-    parser.add_argument("--volume", type=float, default=1.0)
     parser.add_argument("--provider", action="append", dest="providers")
 
 
@@ -38,30 +33,26 @@ def _synthesize(args: argparse.Namespace) -> int:
         lsd_steps=args.lsd_steps,
         max_frames=args.max_frames,
         frames_after_eos=args.frames_after_eos,
-        normalize_audio=args.normalize_audio,
-        volume=args.volume,
     )
     providers = _providers(args.providers)
-    pipeline_kwargs: dict[str, Any] = {
+    runtime_options: dict[str, Any] = {
         "precision": args.precision,
-        "generation": generation,
         "providers": providers,
     }
     if args.bundle:
-        pipeline_kwargs.update(
+        runtime_options.update(
             cache_dir=args.cache_dir,
             offline=args.offline,
             refresh_catalog=args.refresh_catalog,
             force_download=args.force_download,
         )
-        pipeline = PocketPipeline.from_pretrained(args.bundle, **pipeline_kwargs)
+        runtime = PocketRuntime.from_pretrained(args.bundle, **runtime_options)
         bundle_label = args.bundle
     else:
-        pipeline = PocketPipeline.load(args.bundle_dir, **pipeline_kwargs)
+        runtime = PocketRuntime.load(args.bundle_dir, **runtime_options)
         bundle_label = str(args.bundle_dir)
-    with pipeline as active_pipeline:
-        active_pipeline.set_default_voice(args.voice)
-        result = active_pipeline(args.text)
+    with runtime as active_runtime:
+        result = active_runtime.synthesize_text(args.text, voice=args.voice, generation=generation)
         result.save_wav(args.output)
     print(f"Output: {args.output}")
     print(f"Bundle: {bundle_label}")

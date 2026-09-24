@@ -14,52 +14,48 @@ from .asset_manager import BundleAssetManager
 from .asset_progress import AssetProgressCallback, AssetProgressEvent, ConsoleAssetProgress
 from .assets import PocketBundle
 from .bundle import BundleMetadata, BundlePaths
-from .config import GenerationConfig, PipelineConfig
+from .config import GenerationConfig
 from .convenience import synthesize, synthesize_to_wav
-from .diagnostics import RuntimeDiagnostics, TimingDiagnostics
+from .diagnostics import RuntimeDiagnostics, SynthesisTiming
 from .errors import (
     BundleError,
+    BundleLanguageError,
     BundleNotFoundError,
     ModelInferenceError,
     OptionalDependencyError,
-    PipelineClosedError,
     PocketSynthError,
-    VoiceBindingError,
+    RuntimeClosedError,
+    UnsupportedBundleError,
     VoicePromptError,
 )
-from .pipeline import PocketPipeline, PreparedAudioUnits
 from .runtime import PocketRuntime
-from .types import AudioChunk, AudioMarker, AudioResult, AudioUnitDescriptor, AudioUnitResult
+from .types import RenderedChunk, RenderedSegment, SynthesisSegment
 from .voice import PreparedVoice
 
 __all__ = [
-    "AudioMarker",
-    "AudioChunk",
-    "AudioResult",
-    "AudioUnitDescriptor",
-    "AudioUnitResult",
-    "BundleAssetManager",
     "AssetProgressCallback",
     "AssetProgressEvent",
-    "ConsoleAssetProgress",
+    "BundleAssetManager",
     "BundleError",
+    "BundleLanguageError",
     "BundleMetadata",
     "BundleNotFoundError",
     "BundlePaths",
+    "ConsoleAssetProgress",
     "GenerationConfig",
     "ModelInferenceError",
     "OptionalDependencyError",
-    "PipelineClosedError",
-    "PipelineConfig",
     "PocketBundle",
-    "PocketPipeline",
     "PocketRuntime",
     "PocketSynthError",
-    "PreparedAudioUnits",
     "PreparedVoice",
+    "RenderedChunk",
+    "RenderedSegment",
+    "RuntimeClosedError",
     "RuntimeDiagnostics",
-    "TimingDiagnostics",
-    "VoiceBindingError",
+    "SynthesisSegment",
+    "SynthesisTiming",
+    "UnsupportedBundleError",
     "VoicePromptError",
     "synthesize",
     "synthesize_to_wav",

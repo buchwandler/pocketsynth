@@ -7,7 +7,7 @@ from pathlib import Path
 import numpy as np
 import pytest
 
-from pocketsynth import PocketPipeline
+from pocketsynth import PocketRuntime
 
 pytestmark = [pytest.mark.integration, pytest.mark.network]
 
@@ -26,15 +26,13 @@ def _assert_wav(path: Path) -> None:
 
 
 def _render(cache_dir: Path, output: Path, *, offline: bool) -> None:
-    with PocketPipeline.from_pretrained(
-        "english_2026-04",
-        precision="int8",
-        cache_dir=cache_dir,
-        offline=offline,
-    ) as pipeline:
-        assert "alba" in pipeline.predefined_voices
-        pipeline.set_default_voice("alba")
-        result = pipeline("Hello from the PocketSynth predefined voice test.")
+    with PocketRuntime.from_pretrained(
+        "english_2026-04", precision="int8", cache_dir=cache_dir, offline=offline
+    ) as runtime:
+        assert "alba" in runtime.predefined_voices
+        result = runtime.synthesize_text(
+            "Hello from the PocketSynth predefined voice test.", voice="alba"
+        )
         assert result.sample_rate == 24_000
         assert result.duration_seconds > 0
         assert np.all(np.isfinite(result.audio))

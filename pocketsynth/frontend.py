@@ -13,10 +13,9 @@ _SOFT_END = re.compile(r"(?<=[,;:])\s+")
 
 
 class PocketFrontend:
-    """Pocket text preparation and SentencePiece encoding.
+    """Pocket model text normalization, SentencePiece encoding, and token-limit chunking.
 
-    UtterPlan owns semantic sentence/paragraph boundaries. This frontend only performs
-    Pocket-specific text normalization and model token-limit subdivision.
+    The caller owns document semantics. Chunks exist only to satisfy model limits.
     """
 
     def __init__(

@@ -1,70 +1,80 @@
 # Architecture
 
-Pocketsynth follows the same dependency ownership pattern as the current PiperSynth codebase,
-but its atomic model asset is a Pocket **bundle**, not a voice model.
-
-1. **UtterPlan** owns document parsing, SSMD, written-to-spoken preparation, language runs,
-   directives, pause resolution, markers, and sentence/paragraph render units.
-2. **Pocketsynth frontend** owns Pocket-specific text normalization, SentencePiece tokenization,
-   and model token-limit subdivision inside an UtterPlan render span.
-3. **OnnxVoice** owns the Pocket catalog, shared asset store, artifact verification, provider
-   selection, all Pocket ONNX sessions, state-manifest tensors, voice encoding, Flow-LM generation,
-   flow matching, Mimi decoding, and raw native-rate inference results.
-4. **AudioCompose** owns generic audio clips, explicit silence, final timeline composition,
-   resampling/output policy, and marker anchors where exact boundaries are known.
-5. **Pocketsynth** owns application policy: bundle/language compatibility, voice bindings,
-   generation controls, UtterPlan adaptation, result metadata, diagnostics, and the public
-   `PocketRuntime` / `PocketPipeline` APIs.
-
-Normal batch chain:
+PocketSynth is a Pocket TTS synthesis engine. Its public session is `PocketRuntime`, and its input is already-prepared speakable text plus a resolved Pocket bundle and concrete voice conditioning state.
 
 ```text
-source text
-  -> UtterPlan
-  -> Pocketsynth plan adapter
-  -> Pocket frontend / SentencePiece IDs
-  -> OnnxVoice PocketAdapter
-  -> raw float32 model audio
-  -> Pocketsynth compatibility postprocessing
-  -> AudioCompose job
-  -> AudioCompose Composer
-  -> Pocketsynth AudioResult
+source document / SSMD
+        |
+        v
+application orchestration and document planning
+        |
+        | prepared speakable text
+        | resolved Pocket bundle
+        | concrete PreparedVoice
+        v
++-----------------------------------------------+
+|                  PocketSynth                  |
+|                                               |
+| PocketRuntime lifecycle                       |
+| Pocket-specific text normalization             |
+| SentencePiece encoding                        |
+| model token-limit chunking                    |
+| reference/predefined voice preparation        |
+| generation controls                           |
+| OnnxVoice Pocket inference                    |
+| request-local chunk joining                  |
+| waveform validation and WAV convenience       |
++----------------------+------------------------+
+                       |
+                       | independent RenderedSegment
+                       v
+              caller / Readio
+                       |
+                       v
+                Audio composition
 ```
 
-## Semantic units vs model chunks
+## Ownership
 
-UtterPlan units remain semantic/cache/streaming boundaries. The default Pocketsynth unit is a
-sentence. Within one unit, compatible adjacent UtterPlan segments are merged into Pocket render
-spans unless a resolved pause, language change, voice change, or unsupported directive requires a
-hard boundary.
+1. **Application orchestration and document planning** own source parsing, SSMD, written-to-spoken preparation, semantic units, language routing, logical voice roles, directives, semantic pauses, and marker resolution.
+2. **PocketSynth** owns bundle/runtime lifecycle, Pocket-specific model text normalization, SentencePiece encoding, model token-limit chunking, concrete voice preparation, generation controls, waveform validation, request-local model-chunk joining, diagnostics, and WAV convenience.
+3. **OnnxVoice** owns Pocket catalog and asset resolution, installation and cache integrity, provider selection, ONNX sessions, graph contracts, predefined voice-state resolution, Mimi voice encoding, Flow-LM generation, flow matching, decoding, native sample rate, and runtime diagnostics.
+4. **Application composition** owns explicit silence, clips, timeline position, markers, resampling/output policy, external audio, and final mastering.
 
-A render span may still exceed Pocket's `max_token_per_chunk`. The Pocket frontend then subdivides
-that span using the bundle tokenizer. Those model chunks are an implementation detail and do not
-change UtterPlan identities or units.
+PocketSynth has no runtime dependency on the document planner or composition layers. They may be used by callers on either side of the engine.
 
-## Asset and runtime lifecycle
+## Synthesis request and model chunks
 
-`PocketRuntime.load(directory)` is strictly local and network-free. It selects concrete local files
-for the requested precision and opens them through `onnxvoice.open_local(system="pocket", files=...)`.
+A `SynthesisSegment` is one caller-owned request. Its ID is opaque and is copied unchanged into the resulting `RenderedSegment`. PocketSynth does not interpret it as a document unit or retain plan IDs, markers, timeline offsets, semantic pauses, or logical voice roles.
 
-`PocketPipeline.from_pretrained()` installs `pocket:<bundle>` through `onnxvoice.OnnxVoice`, then
-opens the returned installation. Pocketsynth does not contain a catalog parser, downloader, or
-independent model cache.
+```text
+SynthesisSegment
+    -> PocketFrontend.prepare_text()
+    -> PocketFrontend.split_for_model()
+    -> SentencePiece token IDs
+    -> OnnxVoice inference for each token-bounded model chunk
+    -> ordered request-local waveform concatenation
+    -> RenderedSegment
+```
 
-The initial `int8` local profile follows current upstream runtime behavior: INT8 Flow-LM main/flow
-and Mimi decoder, with FP32 Mimi encoder and text conditioner. This is deliberately conservative.
+Punctuation and whitespace are splitting heuristics used only when the model token limit requires subdivision. Chunk indices start at zero for each request. No synthetic document silence is inserted between chunks. `iter_chunks()` exposes the same request-local model chunks without turning them into semantic sentence units.
 
-## Voice prompts
+## Runtime and bundle lifecycle
 
-A Pocket voice is separate from the model bundle. `PreparedVoice` wraps the reusable state returned
-by `PocketAdapter.prepare_voice()`. A reference WAV is decoded/resampled by Pocketsynth and passed to
-OnnxVoice's Mimi encoder once, then the state can be reused across sentences.
+`PocketRuntime.load(directory)` opens a concrete local bundle and is network-free. `PocketRuntime.from_pretrained(bundle)` installs or resolves a managed bundle through OnnxVoice and then opens its runtime. Both paths expose bundle metadata, language, sample rate, predefined voices, token inference, voice preparation, diagnostics, and idempotent close/context-manager lifecycle.
 
-Named predefined voice states are intentionally not downloaded by this MVP because they belong to a
-separate upstream/gated asset domain. They should later be exposed by OnnxVoice as explicit assets,
-not hidden network calls inside Pocketsynth.
+PocketSynth owns the compatibility assertion between an explicit request language and the active bundle language. `None` accepts the bundle-declared language. It does not select or switch bundles.
 
-## Lifecycle
+## Voice conditioning
 
-Use context managers where possible. `close()` is idempotent. OnnxVoice owns ONNX session cleanup;
-Pocketsynth owns its planner/runtime wrappers and prepared application state.
+The bundle is the acoustic/runtime target. `PreparedVoice` is a reusable conditioning state for that bundle. Reference WAV data is validated as mono PCM16, resampled to the bundle rate, converted to the canonical conditioning representation, and encoded by OnnxVoice once. Its stable fingerprint is derived from the canonical sample-rate audio. A predefined voice fingerprint contains the bundle identity and declared voice name. No asset revision is invented when OnnxVoice does not expose one.
+
+## Generation and results
+
+`GenerationConfig` contains only Pocket inference controls: temperature, LSD steps, maximum frames, and frames after EOS. When frames-after-EOS is omitted, PocketRuntime uses the bundle recommendation.
+
+`RenderedSegment` contains finite mono float32 audio at the bundle's native sample rate, the caller ID and text, resolved language, flattened token IDs, request-local chunks, and engine-only diagnostics/timing. WAV conversion clamps samples when writing PCM16. Output gain, loudness, and mastering are caller-owned.
+
+## Removed responsibility boundary
+
+PocketSynth no longer parses SSMD, prepares semantic speech, creates plans or document units, resolves logical voice bindings, interprets directives or pause policy, stores markers, creates AudioJobs, runs a composer, or assembles document timelines. Those responsibilities remain with the caller and its selected document/audio tools.

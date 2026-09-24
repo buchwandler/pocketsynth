@@ -7,7 +7,7 @@ from pathlib import Path
 import numpy as np
 import pytest
 
-from pocketsynth import BundleMetadata, PocketPipeline
+from pocketsynth import BundleMetadata, PocketRuntime
 
 pytestmark = pytest.mark.integration
 
@@ -33,9 +33,8 @@ def test_real_local_bundle_produces_wav(tmp_path: Path) -> None:
     bundle = Path(bundle_raw)
     expected_rate = BundleMetadata.load(bundle / "bundle.json").sample_rate
     output = tmp_path / "local.wav"
-    with PocketPipeline.load(bundle, precision="int8") as pipeline:
-        pipeline.set_default_voice(voice)
-        result = pipeline("Local Pocket smoke test.")
+    with PocketRuntime.load(bundle, precision="int8") as runtime:
+        result = runtime.synthesize_text("Local Pocket smoke test.", voice=voice)
         assert result.sample_rate == expected_rate
         assert result.duration_seconds > 0
         assert np.all(np.isfinite(result.audio))

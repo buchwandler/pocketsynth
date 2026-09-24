@@ -37,6 +37,7 @@ jobs:
           python - <<'PY'
           import os
           import re
+          import tarfile
           import zipfile
           from email import policy
           from email.parser import Parser
@@ -47,7 +48,7 @@ jobs:
           def has_minimum(requirements, name, minimum):
               minimum_version = Version(minimum)
               return any(
-                  requirement.name == name
+                  requirement.name.lower() == name.lower()
                   and any(
                       spec.operator in (">=", ">", "==")
                       and Version(spec.version) >= minimum_version
@@ -68,17 +69,45 @@ jobs:
           assert sdist_version == tag_version, (sdist_version, tag_version)
 
           with zipfile.ZipFile(wheels[0]) as archive:
-              metadata_name = next(name for name in archive.namelist() if name.endswith("METADATA"))
-              metadata = Parser(policy=policy.default).parsestr(
-                  archive.read(metadata_name).decode("utf-8")
+              wheel_metadata_name = next(
+                  name for name in archive.namelist() if name.endswith("METADATA")
               )
+              wheel_metadata_text = archive.read(wheel_metadata_name).decode("utf-8")
+              assert any(name.endswith("pocketsynth/py.typed") for name in archive.namelist())
+
+          with tarfile.open(sdists[0], "r:gz") as archive:
+              sdist_metadata_name = next(
+                  name for name in archive.getnames() if name.endswith("PKG-INFO")
+              )
+              sdist_metadata_file = archive.extractfile(sdist_metadata_name)
+              assert sdist_metadata_file is not None
+              sdist_metadata_text = sdist_metadata_file.read().decode("utf-8")
+
+          for raw_metadata in (wheel_metadata_text, sdist_metadata_text):
+              metadata = Parser(policy=policy.default).parsestr(raw_metadata)
               requirements = [
                   Requirement(value) for value in metadata.get_all("Requires-Dist", [])
               ]
+              dependency_names = {requirement.name.lower() for requirement in requirements}
+              assert not dependency_names.intersection({"utterplan", "audiocompose", "ssmd"})
               assert has_minimum(requirements, "numpy", "1.23")
-              assert has_minimum(requirements, "utterplan", "0.1")
-              assert has_minimum(requirements, "onnxvoice", "0.1")
-              assert any(name.endswith("pocketsynth/py.typed") for name in archive.namelist())
+              onnxvoice_requirements = [
+                  requirement
+                  for requirement in requirements
+                  if requirement.name.lower() == "onnxvoice"
+              ]
+              assert onnxvoice_requirements
+              assert all(
+                  has_minimum([requirement], "onnxvoice", "0.1.12")
+                  for requirement in onnxvoice_requirements
+              )
+              assert all(
+                  any(
+                      spec.operator == "<" and Version(spec.version) <= Version("0.2")
+                      for spec in requirement.specifier
+                  )
+                  for requirement in onnxvoice_requirements
+              )
           PY
 
       - name: Publish package to PyPI

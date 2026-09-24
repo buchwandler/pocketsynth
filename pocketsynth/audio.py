@@ -18,26 +18,8 @@ def as_float32_mono(audio: np.ndarray, *, name: str = "audio") -> np.ndarray:
     return value
 
 
-def postprocess_audio(audio: np.ndarray, *, normalize: bool, volume: float) -> np.ndarray:
-    value = as_float32_mono(audio)
-    if normalize and value.size:
-        peak = float(np.max(np.abs(value)))
-        value = value / peak if peak > 1e-8 else np.zeros_like(value)
-    if volume != 1.0:
-        value = value * np.float32(volume)
-    return np.clip(value, -1.0, 1.0).astype(np.float32, copy=False)
-
-
 def float_to_int16(audio: np.ndarray) -> np.ndarray:
     return (np.clip(as_float32_mono(audio), -1.0, 1.0) * 32767.0).astype(np.int16)
-
-
-def silence_samples(sample_rate: int, seconds: float) -> int:
-    if isinstance(sample_rate, bool) or not isinstance(sample_rate, int) or sample_rate <= 0:
-        raise ValueError("sample_rate must be a positive integer")
-    if not np.isfinite(seconds) or seconds < 0:
-        raise ValueError("seconds must be finite and >= 0")
-    return round(sample_rate * seconds)
 
 
 def write_wav(target: str | Path | BinaryIO, audio: np.ndarray, sample_rate: int) -> None:

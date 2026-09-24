@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import hashlib
 import wave
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -19,6 +20,7 @@ class PreparedVoice:
     bundle_id: str | None = None
     runtime_fingerprint: str | None = None
     metadata: dict[str, Any] = field(default_factory=dict)
+    fingerprint: str | None = None
 
     def validate_compatible(
         self, *, bundle_id: str | None = None, sample_rate: int | None = None
@@ -72,6 +74,22 @@ def _looks_like_path_string(value: str) -> bool:
     return bool(path.suffix) or "/" in value or "\\" in value or path.exists()
 
 
+def _reference_fingerprint(audio: np.ndarray, sample_rate: int) -> str:
+    digest = hashlib.sha256(b"pocketsynth:reference-voice-v1\0")
+    digest.update(sample_rate.to_bytes(8, "big", signed=False))
+    digest.update(np.asarray(audio, dtype="<f4").tobytes(order="C"))
+    return digest.hexdigest()
+
+
+def _predefined_fingerprint(bundle_id: str | None, name: str) -> str:
+    digest = hashlib.sha256(b"pocketsynth:predefined-voice-v1\0")
+    for value in (bundle_id or "", name):
+        encoded = value.encode("utf-8")
+        digest.update(len(encoded).to_bytes(8, "big", signed=False))
+        digest.update(encoded)
+    return digest.hexdigest()
+
+
 def prepare_voice(
     runtime: Any,
     source: str | Path | tuple[np.ndarray, int] | PreparedVoice,
@@ -99,6 +117,7 @@ def prepare_voice(
             bundle_id=bundle_id,
             runtime_fingerprint=bundle_id,
             metadata={"kind": "predefined", "name": source},
+            fingerprint=_predefined_fingerprint(bundle_id, source),
         )
     elif isinstance(source, str) and not _looks_like_path_string(source):
         names = ", ".join(predefined_voices) or "none"
@@ -115,4 +134,9 @@ def prepare_voice(
             "OnnxVoice PocketAdapter must provide prepare_voice(audio, sample_rate=...)"
         )
     state = method(audio, sample_rate=sample_rate)
-    return PreparedVoice(state=state, sample_rate=sample_rate, source=label)
+    return PreparedVoice(
+        state=state,
+        sample_rate=sample_rate,
+        source=label,
+        fingerprint=_reference_fingerprint(audio, sample_rate),
+    )

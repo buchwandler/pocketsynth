@@ -5,17 +5,15 @@ build-backend = "setuptools.build_meta"
 [project]
 name = "pocketsynth"
 dynamic = ["version"]
-description = "UtterPlan-aware Python synthesis runtime for Pocket TTS ONNX bundles"
+description = "Pocket TTS synthesis engine for ONNX bundles"
 readme = "README.md"
 requires-python = ">=3.10"
 license = {text = "Apache-2.0"}
 authors = [{name = "Pocketsynth contributors"}]
 dependencies = [
   "numpy>=1.23",
-  "utterplan>=0.2.0,<0.3",
   "sentencepiece>=0.2,<0.3",
   "onnxvoice>=0.1.12,<0.2",
-  "audiocompose>=0.1,<0.2",
 ]
 keywords = ["tts", "text-to-speech", "pocket-tts", "onnx", "speech", "onnxruntime"]
 classifiers = [
@@ -30,10 +28,9 @@ classifiers = [
   "Programming Language :: Python :: 3.13",
   "Topic :: Multimedia :: Sound/Audio :: Speech",
 ]
-
 [project.optional-dependencies]
-cpu = ["onnxvoice[cpu,pocket]>=0.1.11,<0.3"]
-gpu = ["onnxvoice[gpu,pocket]>=0.1.11,<0.3"]
+cpu = ["onnxvoice[cpu,pocket]>=0.1.12,<0.2"]
+gpu = ["onnxvoice[gpu,pocket]>=0.1.12,<0.2"]
 playback = ["sounddevice>=0.5,<0.6"]
 dev = [
   "pytest>=8",

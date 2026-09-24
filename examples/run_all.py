@@ -15,16 +15,14 @@ _PROJECT_ROOT = _EXAMPLES_DIR.parent
 _ARTEFACT_DIR = _PROJECT_ROOT / "example-artefacts"
 
 EXAMPLES = (
-    ("predefined_voice.py", "managed", False),
-    ("quickstart.py", "managed", False),
-    ("local_bundle.py", "local", False),
-    ("basic.py", "managed", True),
-    ("pretrained_pipeline.py", "managed", False),
-    ("plan_roundtrip.py", "managed", True),
-    ("basic_local.py", "local", True),
-    ("download_and_synthesize.py", "managed", False),
-    ("first_wav.py", "managed", False),
-    ("first_wav_local.py", "local", False),
+    ("predefined_voice.py", "managed"),
+    ("quickstart.py", "managed"),
+    ("local_bundle.py", "local"),
+    ("basic.py", "managed"),
+    ("basic_local.py", "local"),
+    ("download_and_synthesize.py", "managed"),
+    ("first_wav.py", "managed"),
+    ("first_wav_local.py", "local"),
 )
 
 
@@ -43,13 +41,6 @@ def _validate_wav(path: Path) -> None:
     samples.frombytes(frames)
     if not samples or max(abs(sample) for sample in samples) == 0:
         raise RuntimeError(f"{path} contains only digital silence")
-
-
-def _validate_plan(path: Path) -> None:
-    from utterplan import UtterancePlan
-
-    plan = UtterancePlan.load(path)
-    plan.validate()
 
 
 def _run_example(name: str, *, env: dict[str, str]) -> Path:
@@ -104,9 +95,8 @@ def main(argv: list[str] | None = None) -> int:
     args = parser.parse_args(argv)
 
     if args.list:
-        for name, kind, needs_plan in EXAMPLES:
-            suffix = "\tplan" if needs_plan else ""
-            print(f"{name}\t{kind}{suffix}")
+        for name, kind in EXAMPLES:
+            print(f"{name}\t{kind}")
         return 0
 
     bundle_dir = os.environ.get("POCKETSYNTH_EXAMPLE_BUNDLE_DIR")
@@ -117,9 +107,9 @@ def main(argv: list[str] | None = None) -> int:
         include_local = True
         include_managed = False
 
-    runnable: list[tuple[str, str, bool]] = []
+    runnable: list[tuple[str, str]] = []
     for example in EXAMPLES:
-        name, kind, needs_plan = example
+        name, kind = example
         if kind == "local":
             if not include_local or not bundle_dir:
                 reason = (
@@ -137,7 +127,7 @@ def main(argv: list[str] | None = None) -> int:
     if runnable and not voice:
         predefined = [example for example in runnable if example[0] == "predefined_voice.py"]
         if predefined:
-            for name, _kind, _needs_plan in runnable:
+            for name, _kind in runnable:
                 if name != "predefined_voice.py":
                     print(f"SKIP {name} (POCKETSYNTH_EXAMPLE_VOICE not set)")
             runnable = predefined
@@ -158,21 +148,16 @@ def main(argv: list[str] | None = None) -> int:
         env["POCKETSYNTH_EXAMPLE_OFFLINE"] = "1"
 
     failures: list[str] = []
-    for name, _kind, needs_plan in runnable:
+    for name, _kind in runnable:
         print(f"Running {name}...", end=" ", flush=True)
         try:
             output_dir = _run_example(name, env=env)
-            plans = list(output_dir.glob("*.utterplan.json"))
             wavs = list(output_dir.glob("*.wav"))
-            if needs_plan and not plans:
-                raise RuntimeError(f"No .utterplan.json found in {output_dir}")
             if not wavs:
                 raise RuntimeError(f"No .wav found in {output_dir}")
-            for plan_path in plans:
-                _validate_plan(plan_path)
             for wav_path in wavs:
                 _validate_wav(wav_path)
-            print(f"OK ({len(plans)} plans, {len(wavs)} WAVs)")
+            print(f"OK ({len(wavs)} WAVs)")
         except Exception as exc:
             print(f"FAILED: {exc}")
             failures.append(name)

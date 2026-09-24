@@ -65,6 +65,7 @@ def test_predefined_name_uses_runtime_preparation_without_wav_read() -> None:
     assert voice.state is state
     assert voice.bundle_id == "english_2026-04"
     assert voice.runtime_fingerprint == "english_2026-04"
+    assert voice.fingerprint is not None
     assert voice.metadata == {"kind": "predefined", "name": "alba"}
 
 
@@ -159,3 +160,53 @@ def test_invalid_pathlike_is_reported_as_voice_prompt_error() -> None:
             sample_rate=24000,
             predefined_voices=("alba",),
         )
+
+
+def test_reference_voice_fingerprint_uses_canonical_audio(tmp_path: Path) -> None:
+    reference = tmp_path / "reference.wav"
+    alias = tmp_path / "alias.wav"
+    different = tmp_path / "different.wav"
+    samples = np.array([0, 1000, -1000, 250], dtype="<i2")
+
+    def write_prompt(path: Path, audio: np.ndarray) -> None:
+        with wave.open(str(path), "wb") as handle:
+            handle.setnchannels(1)
+            handle.setsampwidth(2)
+            handle.setframerate(24_000)
+            handle.writeframes(audio.tobytes())
+
+    write_prompt(reference, samples)
+    alias.symlink_to(reference)
+    write_prompt(different, samples + 1)
+
+    def prepare(path: Path) -> PreparedVoice:
+        return prepare_voice(
+            MagicMock(),
+            str(path),
+            sample_rate=24_000,
+            bundle_id="english_2026-04",
+        )
+
+    first = prepare(reference)
+    same_audio = prepare(alias)
+    other_audio = prepare(different)
+
+    assert first.fingerprint == same_audio.fingerprint
+    assert first.fingerprint != other_audio.fingerprint
+
+
+def test_predefined_voice_fingerprint_includes_bundle_and_name() -> None:
+    def prepare(bundle_id: str, name: str) -> PreparedVoice:
+        runtime = MagicMock()
+        return prepare_voice(
+            runtime,
+            name,
+            sample_rate=24_000,
+            bundle_id=bundle_id,
+            predefined_voices=(name,),
+        )
+
+    first = prepare("english_2026-04", "alba")
+    assert first.fingerprint == prepare("english_2026-04", "alba").fingerprint
+    assert first.fingerprint != prepare("french_24l", "alba").fingerprint
+    assert first.fingerprint != prepare("english_2026-04", "voice2").fingerprint

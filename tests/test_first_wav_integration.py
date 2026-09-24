@@ -7,7 +7,7 @@ from pathlib import Path
 import numpy as np
 import pytest
 
-from pocketsynth import PocketPipeline
+from pocketsynth import PocketRuntime
 
 pytestmark = pytest.mark.integration
 
@@ -19,9 +19,10 @@ def test_configured_local_first_wav_is_valid(tmp_path: Path) -> None:
         pytest.skip("set POCKETSYNTH_TEST_BUNDLE_DIR and POCKETSYNTH_TEST_VOICE_WAV")
 
     output = tmp_path / "first-wav.wav"
-    with PocketPipeline.load(bundle_raw) as pipeline:
-        pipeline.set_default_voice(voice)
-        result = pipeline("Hello from the PocketSynth first WAV integration test.")
+    with PocketRuntime.load(bundle_raw) as runtime:
+        result = runtime.synthesize_text(
+            "Hello from the PocketSynth first WAV integration test.", voice=voice
+        )
         result.save_wav(output)
 
     with wave.open(str(output), "rb") as stream:

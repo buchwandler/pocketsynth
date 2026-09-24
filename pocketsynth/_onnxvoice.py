@@ -167,7 +167,7 @@ def open_local_bundle(
     except TypeError as exc:
         raise RuntimeCapabilityError(
             "Installed OnnxVoice does not yet support open_local(files=...) for Pocket bundles. "
-            "Apply the accompanying OnnxVoice implementation brief."
+            "Upgrade OnnxVoice to >=0.1.12 for local Pocket bundle support."
         ) from exc
 
 

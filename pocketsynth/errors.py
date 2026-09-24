@@ -46,6 +46,10 @@ class SessionCreationError(PocketSynthError):
     pass
 
 
+class BundleLanguageError(PocketSynthError):
+    """The requested language is incompatible with the active Pocket bundle."""
+
+
 class ModelInferenceError(PocketSynthError):
     pass
 
@@ -54,21 +58,9 @@ class RuntimeCapabilityError(PocketSynthError):
     pass
 
 
+class RuntimeClosedError(PocketSynthError):
+    pass
+
+
 class VoicePromptError(PocketSynthError):
-    pass
-
-
-class VoiceBindingError(PocketSynthError):
-    pass
-
-
-class UnsupportedPlanDirectiveError(PocketSynthError):
-    pass
-
-
-class UnsupportedPlanLanguageError(PocketSynthError):
-    pass
-
-
-class PipelineClosedError(PocketSynthError):
     pass

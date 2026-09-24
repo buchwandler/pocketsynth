@@ -1,4 +1,4 @@
-"""Smallest local Pocket bundle -> WAV example."""
+"""Smallest local Pocket bundle-to-WAV example."""
 
 from __future__ import annotations
 
@@ -7,7 +7,7 @@ from pathlib import Path
 
 from _output import artefact_path
 
-from pocketsynth import PocketPipeline
+from pocketsynth import PocketRuntime
 
 bundle_raw = os.environ.get("POCKETSYNTH_EXAMPLE_BUNDLE_DIR")
 voice = os.environ.get("POCKETSYNTH_EXAMPLE_VOICE")
@@ -17,8 +17,7 @@ if not voice:
     raise SystemExit("Set POCKETSYNTH_EXAMPLE_VOICE=/path/to/reference.wav")
 
 output = artefact_path("first_wav_local.wav")
-with PocketPipeline.load(Path(bundle_raw), precision="int8") as pipeline:
-    pipeline.set_default_voice(voice)
-    pipeline("Hello from Pocket.").save_wav(output)
+with PocketRuntime.load(Path(bundle_raw), precision="int8") as runtime:
+    runtime.synthesize_text("Hello from Pocket.", voice=voice).save_wav(output)
 
 print(f"Wrote {output.resolve()}")

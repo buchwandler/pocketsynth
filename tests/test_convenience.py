@@ -2,110 +2,149 @@
 
 from __future__ import annotations
 
+import wave
+from pathlib import Path
 from unittest.mock import MagicMock, patch
 
 import numpy as np
 import pytest
 
 from pocketsynth.convenience import _save_wav_atomically, synthesize, synthesize_to_wav
-from pocketsynth.types import AudioResult
+from pocketsynth.types import RenderedSegment
+from pocketsynth.voice import PreparedVoice
 
 
-def _make_result() -> AudioResult:
-    """Create a test AudioResult."""
+def _make_result() -> RenderedSegment:
     audio = np.sin(np.linspace(0, 1, 1000, dtype=np.float32) * 2 * np.pi * 440) * 0.5
-    return AudioResult(
+    return RenderedSegment(
+        id="speech",
         audio=audio,
-        sample_rate=24000,
-        source_text="test",
-        prepared_text="test",
+        sample_rate=24_000,
+        text="test",
+        language="en",
+        token_ids=(1, 2, 3),
     )
 
 
-# --- _save_wav_atomically ---
+def _runtime_context(runtime: MagicMock) -> MagicMock:
+    context = MagicMock()
+    context.__enter__.return_value = runtime
+    context.__exit__.return_value = False
+    return context
 
 
-def test_save_wav_atomically_creates_parent_directories(tmp_path):
-    result = _make_result()
-    dest = tmp_path / "sub" / "dir" / "test.wav"
-    _save_wav_atomically(result, dest)
-    assert dest.exists()
+def test_save_wav_atomically_creates_parent_directories_and_valid_wav(tmp_path: Path) -> None:
+    destination = tmp_path / "sub" / "dir" / "test.wav"
+    _save_wav_atomically(_make_result(), destination)
+
+    with wave.open(str(destination), "rb") as stream:
+        assert stream.getnchannels() == 1
+        assert stream.getsampwidth() == 2
+        assert stream.getframerate() == 24_000
+        assert stream.getnframes() > 0
+    assert list(destination.parent.glob(".*.tmp")) == []
 
 
-def test_save_wav_atomically_raises_on_directory(tmp_path):
-    result = _make_result()
+def test_save_wav_atomically_rejects_directory(tmp_path: Path) -> None:
     with pytest.raises(ValueError, match="is a directory"):
-        _save_wav_atomically(result, tmp_path)
+        _save_wav_atomically(_make_result(), tmp_path)
 
 
-def test_save_wav_atomically_is_atomic(tmp_path):
-    """Verify the file is written atomically (temp file is cleaned up)."""
-    result = _make_result()
-    dest = tmp_path / "test.wav"
-    _save_wav_atomically(result, dest)
-    # No leftover temp files
-    assert list(tmp_path.glob(".*.tmp")) == []
-
-
-# --- synthesize_to_wav ---
-
-
-def test_synthesize_to_wav_validates_text():
+def test_synthesize_validates_text_and_bundle() -> None:
     with pytest.raises(TypeError, match="text must be a string"):
-        synthesize_to_wav(123, "out.wav", bundle="test", voice="test.wav")
-
-
-def test_synthesize_to_wav_validates_bundle():
+        synthesize(123, bundle="test", voice="alba")  # type: ignore[arg-type]
     with pytest.raises(ValueError, match="bundle must be a non-empty string"):
-        synthesize_to_wav("hello", "out.wav", bundle="", voice="test.wav")
+        synthesize("hello", bundle="", voice="alba")
 
 
-@pytest.mark.parametrize("voice", ["alba", "test.wav"])
-@patch("pocketsynth.convenience.PocketPipeline")
-def test_synthesize_to_wav_wires_pipeline(mock_pipeline_cls, tmp_path, voice):
-    """Verify synthesize_to_wav calls the pipeline correctly."""
-    mock_pipeline = MagicMock()
-    mock_pipeline_cls.from_pretrained.return_value.__enter__ = MagicMock(return_value=mock_pipeline)
-    mock_pipeline_cls.from_pretrained.return_value.__exit__ = MagicMock(return_value=False)
-
-    mock_result = _make_result()
-    mock_pipeline.return_value = mock_result
-
-    output = tmp_path / "test.wav"
-    result = synthesize_to_wav(
-        "Hello",
-        output,
-        bundle="test-bundle",
-        voice=voice,
-    )
-
-    assert result == output
-    mock_pipeline.set_default_voice.assert_called_once_with(voice)
-    mock_pipeline.assert_called_once_with("Hello")
-
-
-# --- synthesize ---
-
-
-def test_synthesize_validates_text():
-    with pytest.raises(TypeError, match="text must be a string"):
-        synthesize(123, bundle="test", voice="test.wav")
-
-
-def test_synthesize_validates_bundle():
-    with pytest.raises(ValueError, match="bundle must be a non-empty string"):
-        synthesize("hello", bundle="", voice="test.wav")
-
-
-@patch("pocketsynth.convenience.PocketPipeline")
-def test_synthesize_returns_audio_result(mock_pipeline_cls):
-    """Verify synthesize returns an AudioResult."""
-    mock_pipeline = MagicMock()
-    mock_pipeline_cls.from_pretrained.return_value.__enter__ = MagicMock(return_value=mock_pipeline)
-    mock_pipeline_cls.from_pretrained.return_value.__exit__ = MagicMock(return_value=False)
-
+def test_synthesize_uses_runtime_and_prepares_voice() -> None:
+    runtime = MagicMock()
+    prepared = PreparedVoice(state=object(), sample_rate=24_000, bundle_id="test-bundle")
+    runtime.prepare_voice.return_value = prepared
     expected = _make_result()
-    mock_pipeline.return_value = expected
+    runtime.synthesize_text.return_value = expected
+    progress = MagicMock()
+    context = _runtime_context(runtime)
 
-    result = synthesize("Hello", bundle="test-bundle", voice="test.wav")
+    with patch(
+        "pocketsynth.convenience.PocketRuntime.from_pretrained", return_value=context
+    ) as factory:
+        result = synthesize(
+            "Hello",
+            bundle="test-bundle",
+            voice="alba",
+            language="en",
+            temperature=0.5,
+            lsd_steps=2,
+            max_frames=100,
+            frames_after_eos=0,
+            precision="fp32",
+            cache_dir="cache",
+            offline=True,
+            refresh_catalog=True,
+            force_download=True,
+            providers="CPUExecutionProvider",
+            provider_options={"device_id": 0},
+            session_options="options",
+            progress=progress,
+        )
+
     assert result is expected
+    factory.assert_called_once_with(
+        "test-bundle",
+        precision="fp32",
+        cache_dir="cache",
+        offline=True,
+        refresh_catalog=True,
+        force_download=True,
+        providers="CPUExecutionProvider",
+        provider_options={"device_id": 0},
+        session_options="options",
+        progress=progress,
+    )
+    runtime.prepare_voice.assert_called_once_with("alba")
+    runtime.synthesize_text.assert_called_once()
+    args, kwargs = runtime.synthesize_text.call_args
+    assert args == ("Hello",)
+    assert kwargs["voice"] is prepared
+    assert kwargs["language"] == "en"
+    generation = kwargs["generation"]
+    assert (generation.temperature, generation.lsd_steps) == (0.5, 2)
+    assert generation.max_frames == 100
+    assert generation.frames_after_eos == 0
+
+
+def test_synthesize_to_wav_delegates_to_synthesize_and_writes_atomically(tmp_path: Path) -> None:
+    destination = tmp_path / "nested" / "speech.wav"
+    result = _make_result()
+
+    with patch("pocketsynth.convenience.synthesize", return_value=result) as render:
+        output = synthesize_to_wav(
+            "Hello",
+            destination,
+            bundle="test-bundle",
+            voice="alba",
+            language="en",
+        )
+
+    assert output == destination
+    render.assert_called_once_with(
+        "Hello",
+        bundle="test-bundle",
+        voice="alba",
+        precision="int8",
+        language="en",
+        temperature=0.7,
+        lsd_steps=1,
+        max_frames=None,
+        frames_after_eos=None,
+        providers=None,
+        provider_options=None,
+        session_options=None,
+        cache_dir=None,
+        offline=None,
+        refresh_catalog=False,
+        force_download=False,
+        progress=None,
+    )
+    assert destination.is_file()
