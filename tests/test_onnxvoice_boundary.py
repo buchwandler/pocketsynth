@@ -154,7 +154,11 @@ def test_managed_bundle_catalog_voice_names_reach_runtime(tmp_path: Path) -> Non
     adapter.prepare_predefined_voice.assert_called_once_with("alba")
     adapter.prepare_voice.assert_not_called()
     assert voice.state is state
-    assert voice.metadata == {"kind": "predefined", "name": "alba"}
+    assert voice.metadata == {
+        "kind": "predefined",
+        "name": "alba",
+        "source_revision": "catalog-revision",
+    }
     assert voice.bundle_id == "english_2026-04"
 
 

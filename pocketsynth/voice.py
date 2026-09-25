@@ -21,9 +21,35 @@ class PreparedVoice:
     runtime_fingerprint: str | None = None
     metadata: dict[str, Any] = field(default_factory=dict)
     fingerprint: str | None = None
+    source_revision: str | None = None
+
+    @property
+    def identity(self) -> dict[str, str | int | None] | None:
+        kind = self.metadata.get("kind")
+        if kind == "predefined":
+            name = self.metadata.get("name")
+            if not isinstance(name, str) or not name:
+                return None
+            return {
+                "kind": "predefined",
+                "bundle_id": self.bundle_id,
+                "name": name,
+                "source_revision": self.source_revision,
+            }
+        if kind == "reference" and self.fingerprint is not None:
+            return {
+                "kind": "reference",
+                "sha256": self.fingerprint,
+                "sample_rate": self.sample_rate,
+            }
+        return None
 
     def validate_compatible(
-        self, *, bundle_id: str | None = None, sample_rate: int | None = None
+        self,
+        *,
+        bundle_id: str | None = None,
+        sample_rate: int | None = None,
+        source_revision: str | None = None,
     ) -> None:
         """Check that this voice is compatible with the target runtime."""
         if sample_rate is not None and self.sample_rate != sample_rate:
@@ -33,6 +59,15 @@ class PreparedVoice:
         if bundle_id is not None and self.bundle_id is not None and self.bundle_id != bundle_id:
             raise VoicePromptError(
                 f"PreparedVoice bundle {self.bundle_id!r} does not match target {bundle_id!r}"
+            )
+        if (
+            source_revision is not None
+            and self.source_revision is not None
+            and self.source_revision != source_revision
+        ):
+            raise VoicePromptError(
+                f"PreparedVoice source revision {self.source_revision!r} does not match "
+                f"target {source_revision!r}"
             )
 
 
@@ -81,9 +116,9 @@ def _reference_fingerprint(audio: np.ndarray, sample_rate: int) -> str:
     return digest.hexdigest()
 
 
-def _predefined_fingerprint(bundle_id: str | None, name: str) -> str:
-    digest = hashlib.sha256(b"pocketsynth:predefined-voice-v1\0")
-    for value in (bundle_id or "", name):
+def _predefined_fingerprint(bundle_id: str | None, name: str, source_revision: str | None) -> str:
+    digest = hashlib.sha256(b"pocketsynth:predefined-voice-v2\0")
+    for value in (bundle_id or "", name, source_revision or ""):
         encoded = value.encode("utf-8")
         digest.update(len(encoded).to_bytes(8, "big", signed=False))
         digest.update(encoded)
@@ -96,6 +131,7 @@ def prepare_voice(
     *,
     sample_rate: int,
     bundle_id: str | None = None,
+    source_revision: str | None = None,
     predefined_voices: tuple[str, ...] = (),
 ) -> PreparedVoice:
     if isinstance(source, PreparedVoice):
@@ -116,8 +152,13 @@ def prepare_voice(
             source=source,
             bundle_id=bundle_id,
             runtime_fingerprint=bundle_id,
-            metadata={"kind": "predefined", "name": source},
-            fingerprint=_predefined_fingerprint(bundle_id, source),
+            metadata={
+                "kind": "predefined",
+                "name": source,
+                "source_revision": source_revision,
+            },
+            fingerprint=_predefined_fingerprint(bundle_id, source, source_revision),
+            source_revision=source_revision,
         )
     elif isinstance(source, str) and not _looks_like_path_string(source):
         names = ", ".join(predefined_voices) or "none"
@@ -138,5 +179,9 @@ def prepare_voice(
         state=state,
         sample_rate=sample_rate,
         source=label,
+        bundle_id=bundle_id,
+        runtime_fingerprint=bundle_id,
+        metadata={"kind": "reference"},
         fingerprint=_reference_fingerprint(audio, sample_rate),
+        source_revision=source_revision,
     )

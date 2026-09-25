@@ -9,6 +9,7 @@ from . import PocketRuntime, __version__
 from ._onnxvoice import normalize_pocket_ref
 from .bundle import BundlePaths
 from .config import GenerationConfig
+from .convenience import synthesize_with_runtime
 from .voice import _looks_like_path_string, _read_pcm_wav
 
 
@@ -52,7 +53,8 @@ def _synthesize(args: argparse.Namespace) -> int:
         runtime = PocketRuntime.load(args.bundle_dir, **runtime_options)
         bundle_label = str(args.bundle_dir)
     with runtime as active_runtime:
-        result = active_runtime.synthesize_text(
+        result = synthesize_with_runtime(
+            active_runtime,
             args.text,
             voice=args.voice,
             generation=generation,
@@ -161,11 +163,11 @@ def main(argv: list[str] | None = None) -> int:
     synth.add_argument(
         "--sentence-split",
         choices=("phrasplit", "none"),
-        default="phrasplit",
+        default="none",
         help=(
-            'Split plain text into sentences before Pocket model chunking. "phrasplit" '
-            "uses Phrasplit's lightweight regex backend (no spaCy); "
-            '"none" disables sentence segmentation and applies only Pocket model-limit chunking.'
+            'Optional sentence segmentation before Pocket model-limit chunking. "none" (default) '
+            'does not segment sentences; "phrasplit" uses Phrasplit\'s lightweight regex '
+            "backend (no spaCy). Model-limit chunking still applies in either mode."
         ),
     )
     synth.add_argument(

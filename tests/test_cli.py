@@ -11,7 +11,7 @@ from pocketsynth.__main__ import main
 @pytest.mark.parametrize(
     ("sentence_split_args", "expected_sentence_split"),
     [
-        ([], "phrasplit"),
+        ([], "none"),
         (["--sentence-split", "phrasplit"], "phrasplit"),
         (["--sentence-split", "none"], "none"),
     ],
@@ -23,13 +23,15 @@ def test_synthesize_cli_wires_generation_and_cache_options(
     context = MagicMock()
     context.__enter__.return_value = runtime
     result = MagicMock(sample_rate=24_000, duration_seconds=1.0)
-    runtime.synthesize_text.return_value = result
     context.__exit__.return_value = False
     output = tmp_path / "out.wav"
 
-    with patch(
-        "pocketsynth.__main__.PocketRuntime.from_pretrained", return_value=context
-    ) as factory:
+    with (
+        patch(
+            "pocketsynth.__main__.PocketRuntime.from_pretrained", return_value=context
+        ) as factory,
+        patch("pocketsynth.__main__.synthesize_with_runtime", return_value=result) as render,
+    ):
         assert (
             main(
                 [
@@ -69,9 +71,9 @@ def test_synthesize_cli_wires_generation_and_cache_options(
         refresh_catalog=True,
         force_download=True,
     )
-    runtime.synthesize_text.assert_called_once()
-    args, kwargs = runtime.synthesize_text.call_args
-    assert args == ("Hello",)
+    render.assert_called_once()
+    args, kwargs = render.call_args
+    assert args == (runtime, "Hello")
     assert kwargs["voice"] == voice
     assert kwargs["sentence_split"] == expected_sentence_split
     generation = kwargs["generation"]

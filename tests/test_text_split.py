@@ -5,7 +5,7 @@ from typing import cast
 import phrasplit
 import pytest
 
-from pocketsynth import SentenceSplitMode as PublicSentenceSplitMode
+import pocketsynth
 from pocketsynth.text_split import SentenceSplitMode, split_text_for_synthesis
 
 
@@ -75,5 +75,6 @@ def test_invalid_mode_raises_value_error() -> None:
         )
 
 
-def test_sentence_split_mode_is_publicly_exported() -> None:
-    assert PublicSentenceSplitMode is SentenceSplitMode
+def test_sentence_split_mode_is_limited_to_the_explicit_split_module() -> None:
+    assert "SentenceSplitMode" not in pocketsynth.__all__
+    assert not hasattr(pocketsynth, "SentenceSplitMode")

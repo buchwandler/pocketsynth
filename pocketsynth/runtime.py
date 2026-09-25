@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import time
 from collections.abc import Iterator, Mapping, Sequence
-from dataclasses import replace
+from dataclasses import asdict, replace
 from pathlib import Path
 from typing import Any
 
@@ -22,16 +22,29 @@ from .config import GenerationConfig
 from .diagnostics import RuntimeDiagnostics, SynthesisTiming
 from .errors import (
     BundleLanguageError,
+    EmptyTextError,
+    InvalidGenerationConfigError,
+    InvalidLanguageError,
+    InvalidRequestError,
+    InvalidVoiceError,
     ModelInferenceError,
     RuntimeClosedError,
+    SynthesisInputTooLongError,
     UnsupportedBundleError,
+    UnsupportedFeatureError,
+    VoicePromptError,
 )
 from .frontend import PocketFrontend
 from .language import bundle_language as resolve_bundle_language
 from .language import normalize_language
-from .text_split import SentenceSplitMode, split_text_for_synthesis
-from .types import RenderedChunk, RenderedSegment, SynthesisSegment
+from .types import (
+    RenderedChunk,
+    SynthesisRequest,
+    SynthesisResult,
+    SynthesisSegment,
+)
 from .voice import PreparedVoice, prepare_voice
+from .voice_level import VoiceLevelConfig, apply_voice_level_calibration
 
 
 class PocketRuntime:
@@ -188,6 +201,7 @@ class PocketRuntime:
                 source,
                 sample_rate=self.sample_rate,
                 bundle_id=self.bundle_id,
+                source_revision=self.source_revision,
                 predefined_voices=self.predefined_voices,
             )
 
@@ -195,8 +209,12 @@ class PocketRuntime:
             voice = _call("prepare_voice", load_voice)
         else:
             voice = load_voice()
-        voice.validate_compatible(bundle_id=self.bundle_id, sample_rate=self.sample_rate)
-        if voice.bundle_id == self.bundle_id:
+        voice.validate_compatible(
+            bundle_id=self.bundle_id,
+            sample_rate=self.sample_rate,
+            source_revision=self.source_revision,
+        )
+        if voice.bundle_id == self.bundle_id and voice.source_revision == self.source_revision:
             return voice
         return PreparedVoice(
             state=voice.state,
@@ -206,6 +224,7 @@ class PocketRuntime:
             runtime_fingerprint=self.bundle_id,
             metadata=voice.metadata,
             fingerprint=voice.fingerprint,
+            source_revision=self.source_revision,
         )
 
     def infer_tokens(
@@ -213,14 +232,35 @@ class PocketRuntime:
         token_ids: Sequence[int],
         voice: PreparedVoice,
         generation: GenerationConfig,
+        *,
+        text_length: int | None = None,
     ) -> np.ndarray:
         self._ensure_open()
-        voice.validate_compatible(bundle_id=self.bundle_id, sample_rate=self.sample_rate)
-        if len(token_ids) > self.metadata.max_token_per_chunk:
-            raise ValueError(
-                f"Pocket token sequence has {len(token_ids)} tokens; "
-                f"maximum is {self.metadata.max_token_per_chunk}"
+        if not isinstance(voice, PreparedVoice):
+            raise InvalidVoiceError("voice must be a PreparedVoice")
+        try:
+            voice.validate_compatible(
+                bundle_id=self.bundle_id,
+                sample_rate=self.sample_rate,
+                source_revision=self.source_revision,
             )
+        except VoicePromptError as exc:
+            raise InvalidVoiceError(str(exc)) from exc
+        if not isinstance(generation, GenerationConfig):
+            raise InvalidGenerationConfigError("config must be a GenerationConfig")
+        if len(token_ids) > self.metadata.max_token_per_chunk:
+            raise SynthesisInputTooLongError(
+                text_length=text_length,
+                token_count=len(token_ids),
+                max_tokens=self.metadata.max_token_per_chunk,
+                bundle_id=self.bundle_id,
+            )
+        return self._infer_tokens_unchecked(token_ids, voice, generation)
+
+    def _infer_tokens_unchecked(
+        self, token_ids: Sequence[int], voice: PreparedVoice, generation: GenerationConfig
+    ) -> np.ndarray:
+        self._ensure_open()
         try:
             result = self.runtime.infer(
                 token_ids,
@@ -248,66 +288,6 @@ class PocketRuntime:
             raise ModelInferenceError("inference audio must be one-dimensional and finite")
         return audio
 
-    def _iter_chunks_with_timing(
-        self,
-        segment: SynthesisSegment,
-        *,
-        voice: PreparedVoice,
-        generation: GenerationConfig | None = None,
-        sentence_split: SentenceSplitMode = "none",
-    ) -> Iterator[tuple[RenderedChunk, float, float]]:
-        self._ensure_open()
-        if not isinstance(segment, SynthesisSegment):
-            raise TypeError("segment must be a SynthesisSegment")
-        if not segment.text.strip():
-            raise ValueError("segment text must not be empty or whitespace")
-        language = self.bundle_language
-        if segment.language is not None and normalize_language(segment.language) != language:
-            raise BundleLanguageError(
-                f"Language {segment.language!r} is incompatible with Pocket bundle "
-                f"{self.bundle_id!r} (language {language!r})"
-            )
-        voice.validate_compatible(bundle_id=self.bundle_id, sample_rate=self.sample_rate)
-        config = generation or GenerationConfig()
-        frontend_started = time.perf_counter()
-        outer_texts = split_text_for_synthesis(
-            segment.text,
-            language=language,
-            mode=sentence_split,
-        )
-        pending_frontend_ms = (time.perf_counter() - frontend_started) * 1000
-        if not outer_texts:
-            raise ValueError("segment text must not be empty or whitespace")
-        chunk_index = 0
-        for outer_text in outer_texts:
-            frontend_started = time.perf_counter()
-            model_texts = self.frontend.split_for_model(outer_text)
-            pending_frontend_ms += (time.perf_counter() - frontend_started) * 1000
-            if not model_texts:
-                raise ValueError("segment text must not be empty or whitespace")
-            for model_text in model_texts:
-                frontend_started = time.perf_counter()
-                token_ids = self.frontend.encode(model_text)
-                frontend_ms = (time.perf_counter() - frontend_started) * 1000
-                frontend_ms += pending_frontend_ms
-                pending_frontend_ms = 0.0
-                inference_started = time.perf_counter()
-                audio = self.infer_tokens(token_ids, voice, config)
-                inference_ms = (time.perf_counter() - inference_started) * 1000
-                yield (
-                    RenderedChunk(
-                        index=chunk_index,
-                        text=model_text,
-                        model_text=model_text,
-                        token_ids=token_ids,
-                        audio=audio,
-                        sample_rate=self.sample_rate,
-                    ),
-                    frontend_ms,
-                    inference_ms,
-                )
-                chunk_index += 1
-
     def iter_chunks(
         self,
         segment: SynthesisSegment,
@@ -315,64 +295,145 @@ class PocketRuntime:
         voice: PreparedVoice,
         generation: GenerationConfig | None = None,
     ) -> Iterator[RenderedChunk]:
-        """Yield request-local chunks split only to satisfy the Pocket token limit."""
-        for chunk, _, _ in self._iter_chunks_with_timing(
-            segment, voice=voice, generation=generation
-        ):
-            yield chunk
+        """Yield model-limit chunks for explicitly chunked convenience rendering."""
+        self._ensure_open()
+        if not isinstance(segment, SynthesisSegment):
+            raise InvalidRequestError("segment must be a SynthesisSegment")
+        if not segment.text.strip():
+            raise EmptyTextError("segment text must not be empty or whitespace")
+        language = self.bundle_language
+        if segment.language is not None and normalize_language(segment.language) != language:
+            raise BundleLanguageError(
+                f"Language {segment.language!r} is incompatible with Pocket bundle "
+                f"{self.bundle_id!r} (language {language!r})"
+            )
+        if not isinstance(voice, PreparedVoice):
+            raise InvalidVoiceError("voice must be a PreparedVoice")
+        try:
+            voice.validate_compatible(
+                bundle_id=self.bundle_id,
+                sample_rate=self.sample_rate,
+                source_revision=self.source_revision,
+            )
+        except VoicePromptError as exc:
+            raise InvalidVoiceError(str(exc)) from exc
+        config = GenerationConfig() if generation is None else generation
+        if not isinstance(config, GenerationConfig):
+            raise InvalidGenerationConfigError("config must be a GenerationConfig")
+        model_texts = self.frontend.split_for_model(segment.text)
+        if not model_texts:
+            raise EmptyTextError("segment text produced no Pocket model chunks")
+        for index, model_text in enumerate(model_texts):
+            token_ids = self.frontend.encode(model_text)
+            audio = self.infer_tokens(token_ids, voice, config, text_length=len(segment.text))
+            yield RenderedChunk(
+                index=index,
+                text=model_text,
+                model_text=model_text,
+                token_ids=token_ids,
+                audio=audio,
+                sample_rate=self.sample_rate,
+            )
 
     def synthesize(
         self,
-        segment: SynthesisSegment,
+        request: SynthesisRequest,
         *,
         voice: PreparedVoice,
-        generation: GenerationConfig | None = None,
-    ) -> RenderedSegment:
-        """Render one prepared-text request as an independent Pocket result."""
-        return self._synthesize_impl(
-            segment,
-            voice=voice,
-            generation=generation,
-            sentence_split="none",
-        )
+        config: GenerationConfig | None = None,
+        voice_level: VoiceLevelConfig | None = None,
+    ) -> SynthesisResult:
+        """Render one complete request with one encoding and at most one inference."""
+        self._ensure_open()
+        if not isinstance(request, SynthesisRequest):
+            raise InvalidRequestError("request must be a SynthesisRequest")
+        if not request.text.strip():
+            raise EmptyTextError("request text must not be empty or whitespace")
+        if request.tokens:
+            raise UnsupportedFeatureError(feature="linguistic_tokens")
+        if request.pronunciation_overrides:
+            raise UnsupportedFeatureError(feature="pronunciation_overrides")
+        language = self.bundle_language
+        if request.language is not None:
+            if not request.language.strip() or normalize_language(request.language) != language:
+                raise InvalidLanguageError(
+                    f"Language {request.language!r} is incompatible with Pocket bundle "
+                    f"{self.bundle_id!r} (language {language!r})"
+                )
+        generation = GenerationConfig() if config is None else config
+        if not isinstance(generation, GenerationConfig):
+            raise InvalidGenerationConfigError("config must be a GenerationConfig")
+        voice_level_config = VoiceLevelConfig() if voice_level is None else voice_level
+        if not isinstance(voice_level_config, VoiceLevelConfig):
+            raise InvalidGenerationConfigError("voice_level must be a VoiceLevelConfig")
+        if not isinstance(voice, PreparedVoice):
+            raise InvalidVoiceError("voice must be a PreparedVoice")
+        try:
+            voice.validate_compatible(
+                bundle_id=self.bundle_id,
+                sample_rate=self.sample_rate,
+                source_revision=self.source_revision,
+            )
+        except VoicePromptError as exc:
+            raise InvalidVoiceError(str(exc)) from exc
 
-    def _synthesize_impl(
-        self,
-        segment: SynthesisSegment,
-        *,
-        voice: PreparedVoice,
-        generation: GenerationConfig | None = None,
-        sentence_split: SentenceSplitMode,
-    ) -> RenderedSegment:
         started = time.perf_counter()
-        chunks: list[RenderedChunk] = []
-        frontend_ms = 0.0
-        inference_ms = 0.0
-        for chunk, chunk_frontend_ms, chunk_inference_ms in self._iter_chunks_with_timing(
-            segment,
-            voice=voice,
-            generation=generation,
-            sentence_split=sentence_split,
-        ):
-            chunks.append(chunk)
-            frontend_ms += chunk_frontend_ms
-            inference_ms += chunk_inference_ms
-        audio = np.concatenate([chunk.audio for chunk in chunks]).astype(np.float32, copy=False)
-        token_ids = tuple(token_id for chunk in chunks for token_id in chunk.token_ids)
-        return RenderedSegment(
-            id=segment.id,
+        frontend_started = time.perf_counter()
+        token_ids = self.frontend.encode(request.text)
+        frontend_ms = (time.perf_counter() - frontend_started) * 1000
+        if not token_ids:
+            raise EmptyTextError("request text produced no Pocket tokens")
+        max_tokens = self.metadata.max_token_per_chunk
+        if len(token_ids) > max_tokens:
+            raise SynthesisInputTooLongError(
+                text_length=len(request.text),
+                token_count=len(token_ids),
+                max_tokens=max_tokens,
+                bundle_id=self.bundle_id,
+            )
+
+        inference_started = time.perf_counter()
+        audio = self._infer_tokens_unchecked(token_ids, voice, generation)
+        inference_ms = (time.perf_counter() - inference_started) * 1000
+        voice_identity = voice.identity
+        calibration_catalog: Mapping[str, object] = {}
+        if voice_level_config.mode == "calibrated" and voice_level_config.gain_db is None:
+            raw_metadata = self.metadata.raw or {}
+            raw_catalog = raw_metadata.get("voice_level_calibration", {})
+            if not isinstance(raw_catalog, Mapping):
+                raise UnsupportedBundleError("bundle voice_level_calibration must be an object")
+            calibration_catalog = raw_catalog
+        audio, voice_level_application = apply_voice_level_calibration(
+            audio,
+            voice_level_config,
+            identity=voice_identity,
+            catalog=calibration_catalog,
+        )
+        total_ms = (time.perf_counter() - started) * 1000
+        diagnostics = self.diagnostics
+        return SynthesisResult(
+            id=request.id,
             audio=audio,
             sample_rate=self.sample_rate,
-            text=segment.text,
-            language=self.bundle_language,
-            token_ids=token_ids,
-            chunks=tuple(chunks),
-            diagnostics=self.diagnostics,
-            timing=SynthesisTiming(
-                frontend_ms=frontend_ms,
-                inference_ms=inference_ms,
-                total_ms=(time.perf_counter() - started) * 1000,
-            ),
+            text=request.text,
+            language=language,
+            metadata={
+                "bundle_id": self.bundle_id,
+                "bundle_revision": self.source_revision,
+                "voice_identity": voice_identity,
+                "token_count": len(token_ids),
+                "generation_config": asdict(generation),
+                "voice_level_config": asdict(voice_level_config),
+                "voice_level_application": asdict(voice_level_application),
+                "runtime_diagnostics": asdict(diagnostics),
+                "timing": asdict(
+                    SynthesisTiming(
+                        frontend_ms=frontend_ms,
+                        inference_ms=inference_ms,
+                        total_ms=total_ms,
+                    )
+                ),
+            },
         )
 
     def synthesize_text(
@@ -382,16 +443,24 @@ class PocketRuntime:
         voice: PreparedVoice | Any,
         id: str = "speech",
         language: str | None = None,
-        generation: GenerationConfig | None = None,
-        sentence_split: SentenceSplitMode = "phrasplit",
-    ) -> RenderedSegment:
-        """Prepare a concrete voice if needed, then synthesize one text request."""
-        prepared_voice = voice if isinstance(voice, PreparedVoice) else self.prepare_voice(voice)
-        return self._synthesize_impl(
-            SynthesisSegment(id=id, text=text, language=language),
+        config: GenerationConfig | None = None,
+        voice_level: VoiceLevelConfig | None = None,
+    ) -> SynthesisResult:
+        """Prepare a voice for one strict, unsplit text request."""
+        request = SynthesisRequest(id=id, text=text, language=language)
+        if not request.text.strip():
+            raise EmptyTextError("request text must not be empty or whitespace")
+        try:
+            prepared_voice = (
+                voice if isinstance(voice, PreparedVoice) else self.prepare_voice(voice)
+            )
+        except VoicePromptError as exc:
+            raise InvalidVoiceError(str(exc)) from exc
+        return self.synthesize(
+            request,
             voice=prepared_voice,
-            generation=generation,
-            sentence_split=sentence_split,
+            config=config,
+            voice_level=voice_level,
         )
 
     @property

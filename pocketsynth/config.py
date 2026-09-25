@@ -1,6 +1,10 @@
 from __future__ import annotations
 
+import math
 from dataclasses import dataclass
+from numbers import Real
+
+from .errors import InvalidGenerationConfigError
 
 
 @dataclass(frozen=True, slots=True)
@@ -11,11 +15,28 @@ class GenerationConfig:
     frames_after_eos: int | None = None
 
     def __post_init__(self) -> None:
-        if not 0.0 <= self.temperature <= 2.0:
-            raise ValueError("temperature must be between 0 and 2")
-        if self.lsd_steps < 1:
-            raise ValueError("lsd_steps must be >= 1")
-        if self.max_frames is not None and self.max_frames < 1:
-            raise ValueError("max_frames must be >= 1")
-        if self.frames_after_eos is not None and self.frames_after_eos < 0:
-            raise ValueError("frames_after_eos must be >= 0")
+        if (
+            isinstance(self.temperature, bool)
+            or not isinstance(self.temperature, Real)
+            or not math.isfinite(float(self.temperature))
+            or not 0.0 <= self.temperature <= 2.0
+        ):
+            raise InvalidGenerationConfigError("temperature must be finite and between 0 and 2")
+        if (
+            isinstance(self.lsd_steps, bool)
+            or not isinstance(self.lsd_steps, int)
+            or self.lsd_steps < 1
+        ):
+            raise InvalidGenerationConfigError("lsd_steps must be an integer >= 1")
+        if self.max_frames is not None and (
+            isinstance(self.max_frames, bool)
+            or not isinstance(self.max_frames, int)
+            or self.max_frames < 1
+        ):
+            raise InvalidGenerationConfigError("max_frames must be an integer >= 1 or None")
+        if self.frames_after_eos is not None and (
+            isinstance(self.frames_after_eos, bool)
+            or not isinstance(self.frames_after_eos, int)
+            or self.frames_after_eos < 0
+        ):
+            raise InvalidGenerationConfigError("frames_after_eos must be an integer >= 0 or None")

@@ -6,7 +6,8 @@ import os
 
 from _output import artefact_path
 
-from pocketsynth import ConsoleAssetProgress, synthesize_to_wav
+from pocketsynth import ConsoleAssetProgress
+from pocketsynth.convenience import synthesize_to_wav
 
 voice = os.environ.get("POCKETSYNTH_EXAMPLE_VOICE")
 if not voice:

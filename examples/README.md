@@ -32,7 +32,7 @@ The script writes `example-artefacts/predefined_voice_alba.wav`. The bundle's `p
 
 ## Long-text synthesis
 
-`long_text.py` uses the bundle-declared `alba` voice and demonstrates both the default Phrasplit sentence boundaries and `sentence_split="none"`. It writes `long-text.wav` and `long-text-no-split.wav`. The `none` mode is useful when an application already owns segmentation or wants to minimize preprocessing.
+`long_text.py` uses the bundle-declared `alba` voice and demonstrates opt-in Phrasplit sentence boundaries and `sentence_split="none"`. Sentence splitting defaults to `none`, which still applies Pocket model-limit chunking. It writes `long-text.wav` and `long-text-no-split.wav`.
 
 ```bash
 python examples/long_text.py

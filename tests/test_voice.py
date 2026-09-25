@@ -66,7 +66,17 @@ def test_predefined_name_uses_runtime_preparation_without_wav_read() -> None:
     assert voice.bundle_id == "english_2026-04"
     assert voice.runtime_fingerprint == "english_2026-04"
     assert voice.fingerprint is not None
-    assert voice.metadata == {"kind": "predefined", "name": "alba"}
+    assert voice.metadata == {
+        "kind": "predefined",
+        "name": "alba",
+        "source_revision": None,
+    }
+    assert voice.identity == {
+        "kind": "predefined",
+        "bundle_id": "english_2026-04",
+        "name": "alba",
+        "source_revision": None,
+    }
 
 
 def test_unknown_bare_name_reports_bundle_voices_before_wav_read() -> None:
@@ -193,20 +203,37 @@ def test_reference_voice_fingerprint_uses_canonical_audio(tmp_path: Path) -> Non
 
     assert first.fingerprint == same_audio.fingerprint
     assert first.fingerprint != other_audio.fingerprint
+    assert first.identity == same_audio.identity
+    assert first.identity == {
+        "kind": "reference",
+        "sha256": first.fingerprint,
+        "sample_rate": 24_000,
+    }
+    assert first.identity != other_audio.identity
 
 
-def test_predefined_voice_fingerprint_includes_bundle_and_name() -> None:
-    def prepare(bundle_id: str, name: str) -> PreparedVoice:
+def test_predefined_voice_fingerprint_includes_bundle_name_and_revision() -> None:
+    def prepare(bundle_id: str, name: str, source_revision: str | None = None) -> PreparedVoice:
         runtime = MagicMock()
         return prepare_voice(
             runtime,
             name,
             sample_rate=24_000,
             bundle_id=bundle_id,
+            source_revision=source_revision,
             predefined_voices=(name,),
         )
 
-    first = prepare("english_2026-04", "alba")
-    assert first.fingerprint == prepare("english_2026-04", "alba").fingerprint
-    assert first.fingerprint != prepare("french_24l", "alba").fingerprint
-    assert first.fingerprint != prepare("english_2026-04", "voice2").fingerprint
+    first = prepare("english_2026-04", "alba", "revision-1")
+    same = prepare("english_2026-04", "alba", "revision-1")
+    assert first.fingerprint == same.fingerprint
+    assert first.identity == same.identity
+    assert first.identity == {
+        "kind": "predefined",
+        "bundle_id": "english_2026-04",
+        "name": "alba",
+        "source_revision": "revision-1",
+    }
+    assert first.fingerprint != prepare("english_2026-04", "alba", "revision-2").fingerprint
+    assert first.fingerprint != prepare("french_24l", "alba", "revision-1").fingerprint
+    assert first.fingerprint != prepare("english_2026-04", "voice2", "revision-1").fingerprint

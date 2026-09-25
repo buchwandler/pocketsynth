@@ -2,6 +2,8 @@ from __future__ import annotations
 
 import ast
 import re
+import subprocess
+import sys
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -44,6 +46,17 @@ FORBIDDEN_TERMS = (
     "normalize_audio",
     "retain_unit_audio",
 )
+
+
+def test_strict_public_import_does_not_load_convenience_or_text_split() -> None:
+    code = (
+        "import sys; import pocketsynth; "
+        "from pocketsynth import PocketRuntime, SynthesisRequest; "
+        "assert PocketRuntime and SynthesisRequest; "
+        "assert 'pocketsynth.convenience' not in sys.modules; "
+        "assert 'pocketsynth.text_split' not in sys.modules"
+    )
+    subprocess.run([sys.executable, "-c", code], cwd=ROOT, check=True)
 
 
 def test_runtime_package_has_no_neighboring_layer_imports() -> None:

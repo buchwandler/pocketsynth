@@ -6,7 +6,7 @@ import os
 
 from _output import artefact_path
 
-from pocketsynth import synthesize_to_wav
+from pocketsynth.convenience import synthesize_to_wav
 
 voice = os.environ.get("POCKETSYNTH_EXAMPLE_VOICE")
 if not voice:

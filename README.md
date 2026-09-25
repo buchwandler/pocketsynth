@@ -24,12 +24,12 @@ The `gpu` extra selects OnnxVoice's GPU runtime. `playback` adds `sounddevice` f
 Use `PocketRuntime` for a reusable local or managed bundle session. Prepare a voice once and reuse it across independent requests:
 
 ```python
-from pocketsynth import PocketRuntime, SynthesisSegment
+from pocketsynth import PocketRuntime, SynthesisRequest
 
 with PocketRuntime.from_pretrained("english_2026-04") as runtime:
     voice = runtime.prepare_voice("alba")
     result = runtime.synthesize(
-        SynthesisSegment(
+        SynthesisRequest(
             id="line-001",
             text="Hello from Pocket.",
             language="en",
@@ -39,47 +39,42 @@ with PocketRuntime.from_pretrained("english_2026-04") as runtime:
     result.save_wav("hello.wav")
 ```
 
-For standalone text synthesis, `synthesize_text()` creates the request and prepares non-`PreparedVoice` inputs:
-
-```python
-with PocketRuntime.from_pretrained("english_2026-04") as runtime:
-    result = runtime.synthesize_text("Hello from Pocket.", voice="alba")
-    result.save_wav("hello.wav")
-```
+`PocketRuntime.synthesize()` is strict and atomic. It encodes the complete request once, then either performs one inference or raises `SynthesisInputTooLongError`. It never splits text. `config=` accepts a validated `GenerationConfig`; `synthesize_text()` is a strict plain-text wrapper that prepares non-`PreparedVoice` inputs.
 
 `PocketRuntime.load(directory)` opens a local bundle without catalog access or network activity. `PocketRuntime.from_pretrained(bundle)` resolves and opens a managed bundle through OnnxVoice.
 
-The convenience function is useful for one-off managed output:
+Document-friendly splitting is available only from the explicit convenience module:
 
 ```python
-from pocketsynth import synthesize_to_wav
+from pocketsynth.convenience import synthesize_to_wav
 
 synthesize_to_wav(
     "Hello from Pocket.",
     "hello.wav",
     bundle="english_2026-04",
     voice="alba",
+    sentence_split="phrasplit",  # opt in to sentence segmentation
 )
 ```
 
-`synthesize()` returns a `RenderedSegment` in memory. Results contain native-rate mono float32 audio, caller request identity, resolved language, token IDs, optional request-local model chunks, runtime diagnostics, and engine timing. WAV saving writes mono PCM16 and clips only during PCM conversion.
+Convenience functions return a `RenderedSegment` and may split at model limits. Sentence splitting defaults to `"none"`; pass `sentence_split="phrasplit"` to opt in. These functions are not aliases for the strict runtime API and are not imported by `pocketsynth`.
 
-## Pocket text and model chunks
+## Text and model chunks
 
-Input text must already be speakable. PocketSynth does not parse documents, expand numbers or dates, or apply pronunciation directives. The ergonomic plain-text APIs `PocketRuntime.synthesize_text()`, `synthesize()`, and `synthesize_to_wav()` split prose into sentences with Phrasplit's lightweight regex backend by default, then apply Pocket's model token limit to each sentence. This sentence segmentation is not document planning.
+Input text must already be speakable. PocketSynth does not parse documents, expand numbers or dates, or apply pronunciation directives. Strict synthesis neither segments sentences nor subdivides at the model token limit. Oversized requests fail with `SynthesisInputTooLongError`.
 
-Pass `sentence_split="none"` to bypass sentence segmentation and use only Pocket model-limit chunking. The low-level `PocketRuntime.synthesize(SynthesisSegment(...))` keeps that model-limit-only behavior. `PocketFrontend` owns Pocket-specific whitespace normalization, configured semicolon replacement and short-input padding, SentencePiece encoding, and token-limit subdivision.
+The explicit convenience layer can split text to fit model limits. Its optional Phrasplit mode segments sentences first, then Pocket model-limit chunks are rendered and joined in order. `PocketRuntime.iter_chunks()` exposes model-limit chunks for applications that explicitly want chunked rendering; it does not perform sentence segmentation.
 
 ```python
+from pocketsynth.convenience import synthesize_with_runtime
+from pocketsynth import PocketRuntime
+
 with PocketRuntime.from_pretrained("english_2026-04") as runtime:
     long_text = "Dr. Smith arrived early. Then he started the presentation."
-    result = runtime.synthesize_text(long_text, voice="alba")
-    already_segmented = runtime.synthesize_text(
-        long_text, voice="alba", sentence_split="none"
+    result = synthesize_with_runtime(
+        runtime, long_text, voice="alba", sentence_split="phrasplit"
     )
 ```
-
-Model chunks are request-local inference details. Their audio is joined in order with no document pauses or timeline composition. `iter_chunks()` yields those model chunks when incremental consumption is useful.
 
 An explicit request language is a compatibility assertion against the active bundle. `None` uses the bundle language. PocketSynth does not switch bundles or route languages automatically.
 
@@ -118,7 +113,7 @@ pocketsynth synthesize \
   "Hello from Pocket."
 ```
 
-The `synthesize` command accepts `--sentence-split phrasplit` (the default lightweight regex backend, without spaCy) or `--sentence-split none` to disable sentence segmentation and apply only Pocket model-limit chunking. Other inference controls include `--temperature`, `--lsd-steps`, `--max-frames`, and `--frames-after-eos`. Asset controls include `--cache-dir`, `--offline`, `--refresh-catalog`, and `--force-download` for managed bundles.
+The `synthesize` CLI is a convenience renderer. Sentence splitting defaults to `none`, which still permits Pocket model-limit chunking. Pass `--sentence-split phrasplit` to opt into Phrasplit's lightweight regex sentence segmentation. Other inference controls include `--temperature`, `--lsd-steps`, `--max-frames`, and `--frames-after-eos`. Asset controls include `--cache-dir`, `--offline`, `--refresh-catalog`, and `--force-download` for managed bundles.
 
 ## Orchestrated use
 
@@ -129,7 +124,7 @@ source document / SSMD
     -> application orchestration and document planning
     -> prepared speakable text + concrete bundle + PreparedVoice
     -> PocketRuntime
-    -> RenderedSegment
+    -> SynthesisResult
     -> application composition and output policy
 ```
 
@@ -137,9 +132,9 @@ PocketSynth does not import or require the neighboring document-planning or audi
 
 ## Breaking boundary change
 
-The next breaking release removes the former document-planning and composition surface. There are no compatibility aliases. Replace `PocketPipeline` plan/render methods with `PocketRuntime.synthesize()` or `synthesize_text()`. Pass prepared speakable text and a concrete voice. Build document pauses, markers, role routing, and final timelines in the application or its composition layer.
+PocketSynth's engine API is strict and atomic: `PocketRuntime.synthesize()` accepts one `SynthesisRequest` and never splits it. `synthesize_text()` is the strict plain-text wrapper. Document and model-limit splitting lives in the explicit `pocketsynth.convenience` module and the CLI. Convenience imports are not loaded by importing `pocketsynth`.
 
-The change also removes planner configuration and diagnostics, plan provenance, semantic-unit streaming, AudioJob creation, and core output gain/normalization settings. Pocket model chunks remain supported as request-local chunks.
+The strict API returns finite mono float32 audio with request and runtime metadata, but no chunk collection. Applications that deliberately need model-limit chunks can use `PocketRuntime.iter_chunks()` or the explicit convenience layer. Document pauses, markers, role routing, and final timelines remain application responsibilities.
 
 ## Examples and checks
 

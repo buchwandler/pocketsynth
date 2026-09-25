@@ -15,23 +15,44 @@ from .asset_progress import AssetProgressCallback, AssetProgressEvent, ConsoleAs
 from .assets import PocketBundle
 from .bundle import BundleMetadata, BundlePaths
 from .config import GenerationConfig
-from .convenience import synthesize, synthesize_to_wav
 from .diagnostics import RuntimeDiagnostics, SynthesisTiming
 from .errors import (
     BundleError,
     BundleLanguageError,
     BundleNotFoundError,
+    EmptyTextError,
+    InvalidGenerationConfigError,
+    InvalidLanguageError,
+    InvalidRequestError,
+    InvalidVoiceError,
     ModelInferenceError,
     OptionalDependencyError,
     PocketSynthError,
     RuntimeClosedError,
+    SynthesisError,
+    SynthesisInputTooLongError,
     UnsupportedBundleError,
+    UnsupportedFeatureError,
     VoicePromptError,
 )
 from .runtime import PocketRuntime
-from .text_split import SentenceSplitMode
-from .types import RenderedChunk, RenderedSegment, SynthesisSegment
+from .types import (
+    LinguisticToken,
+    PronunciationOverride,
+    RenderedChunk,
+    RenderedSegment,
+    SynthesisRequest,
+    SynthesisResult,
+    SynthesisSegment,
+    WordTiming,
+)
 from .voice import PreparedVoice
+from .voice_level import (
+    VoiceLevelApplication,
+    VoiceLevelConfig,
+    VoiceLevelMode,
+    VoiceLevelSource,
+)
 
 __all__ = [
     "AssetProgressCallback",
@@ -43,22 +64,36 @@ __all__ = [
     "BundleNotFoundError",
     "BundlePaths",
     "ConsoleAssetProgress",
+    "EmptyTextError",
     "GenerationConfig",
+    "InvalidGenerationConfigError",
+    "InvalidLanguageError",
+    "InvalidRequestError",
+    "InvalidVoiceError",
+    "LinguisticToken",
     "ModelInferenceError",
     "OptionalDependencyError",
     "PocketBundle",
     "PocketRuntime",
     "PocketSynthError",
     "PreparedVoice",
+    "PronunciationOverride",
     "RenderedChunk",
     "RenderedSegment",
     "RuntimeClosedError",
     "RuntimeDiagnostics",
-    "SentenceSplitMode",
+    "SynthesisError",
+    "SynthesisInputTooLongError",
+    "SynthesisRequest",
+    "SynthesisResult",
     "SynthesisSegment",
     "SynthesisTiming",
     "UnsupportedBundleError",
+    "UnsupportedFeatureError",
+    "VoiceLevelApplication",
+    "VoiceLevelConfig",
+    "VoiceLevelMode",
+    "VoiceLevelSource",
     "VoicePromptError",
-    "synthesize",
-    "synthesize_to_wav",
+    "WordTiming",
 ]

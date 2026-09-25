@@ -1,89 +1,82 @@
 # Architecture
 
-PocketSynth is a Pocket TTS synthesis engine. `PocketRuntime.synthesize_text()` is its ergonomic plain-text entry point; it segments sentences with Phrasplit's lightweight backend by default before Pocket model-limit chunking. `PocketRuntime.synthesize(SynthesisSegment(...))` remains a low-level prepared-request API. Both use a resolved Pocket bundle and concrete voice conditioning state.
+PocketSynth is an engine for Pocket TTS ONNX bundles. Its strict runtime API renders one complete `SynthesisRequest` with one encode, one capacity decision, and at most one inference. It does not segment or split a strict request. Explicit document and model-limit convenience splitting is available from `pocketsynth.convenience` and the CLI, outside the strict package import surface.
 
 ```text
 source document / SSMD
         |
         v
-application orchestration and document planning
+application orchestration and document preparation
         |
-        | prepared speakable text
-        | resolved Pocket bundle
-        | concrete PreparedVoice
+        | one prepared SynthesisRequest + PreparedVoice
         v
 +-----------------------------------------------+
 |                  PocketSynth                  |
 |                                               |
-| PocketRuntime lifecycle                       |
-| Optional Phrasplit sentence segmentation      |
-| Pocket-specific text normalization            |
-| SentencePiece encoding                        |
-| model token-limit chunking                    |
-| reference/predefined voice preparation        |
-| generation controls                           |
-| OnnxVoice Pocket inference                    |
-| request-local chunk joining                  |
-| waveform validation and WAV convenience       |
+| strict request validation                    |
+| Pocket text normalization and encoding       |
+| one model-capacity check                     |
+| voice preparation and calibration metadata   |
+| OnnxVoice Pocket inference                   |
+| finite mono float32 SynthesisResult          |
 +----------------------+------------------------+
                        |
-                       | independent RenderedSegment
                        v
-              caller / Readio
+                caller / application
                        |
                        v
-                Audio composition
+              application composition
+
+Explicit convenience path:
+  sentence splitting (opt-in) -> model-limit chunks -> joined RenderedSegment
 ```
 
 ## Ownership
 
-1. **Application orchestration and document planning** own source parsing, SSMD, written-to-spoken preparation, semantic units, language routing, logical voice roles, directives, semantic pauses, and marker resolution.
-2. **PocketSynth** owns bundle/runtime lifecycle, optional lightweight sentence segmentation for ergonomic text APIs, Pocket-specific model text normalization, SentencePiece encoding, model token-limit chunking, concrete voice preparation, generation controls, waveform validation, request-local model-chunk joining, diagnostics, and WAV convenience.
-3. **OnnxVoice** owns Pocket catalog and asset resolution, installation and cache integrity, provider selection, ONNX sessions, graph contracts, predefined voice-state resolution, Mimi voice encoding, Flow-LM generation, flow matching, decoding, native sample rate, and runtime diagnostics.
-4. **Application composition** owns explicit silence, clips, timeline position, markers, resampling/output policy, external audio, and final mastering.
+1. **Application orchestration and document planning** own source parsing, SSMD, written-to-spoken preparation, semantic units, language routing, logical voice roles, directives, pauses, and marker resolution.
+2. **PocketSynth strict runtime** owns bundle/runtime lifecycle, request validation, Pocket-specific model text normalization, SentencePiece encoding, one-request capacity validation, concrete voice preparation, generation controls, static voice-level calibration, waveform validation, diagnostics, and `SynthesisResult` construction.
+3. **PocketSynth convenience module and CLI** may segment sentences and divide text at model limits, then join the rendered chunks into a `RenderedSegment`. Sentence splitting defaults to `none`; Phrasplit is opt-in. These modules are not imported by `pocketsynth` or `pocketsynth.runtime`.
+4. **OnnxVoice** owns Pocket catalog and asset resolution, installation and cache integrity, provider selection, ONNX sessions, graph contracts, predefined voice-state resolution, Mimi voice encoding, Flow-LM generation, flow matching, decoding, native sample rate, and runtime diagnostics.
+5. **Application composition** owns explicit silence, clips, timeline position, markers, output policy, external audio, and final mastering.
 
-PocketSynth has no runtime dependency on the document planner or composition layers. They may be used by callers on either side of the engine.
+PocketSynth has no runtime dependency on document-planning or audio-composition layers. Those may be used by callers around either API surface.
 
-## Synthesis request and model chunks
+## Strict request and convenience rendering
 
-A `SynthesisSegment` is one caller-owned low-level request. Its ID is opaque and is copied unchanged into the resulting `RenderedSegment`. PocketSynth does not interpret it as a document unit or retain plan IDs, markers, timeline offsets, semantic pauses, or logical voice roles.
-
-The ergonomic plain-text path supports optional sentence segmentation. `synthesize_text()` defaults to Phrasplit's lightweight regex backend, forced with `use_spacy=False`; `sentence_split="none"` bypasses it. In either mode, Pocket's model splitter is the final inference safety layer. Low-level `synthesize()` and `iter_chunks()` do not perform linguistic sentence segmentation.
+`PocketRuntime.synthesize(request, voice=..., config=...)` accepts a `SynthesisRequest` and a prepared voice. It validates supported fields and compatibility before encoding the original complete text once. If the resulting token count exceeds the bundle's model capacity, it raises `SynthesisInputTooLongError`; otherwise it performs one inference and returns one `SynthesisResult`. The result has no public chunk collection. `synthesize_text()` is a strict plain-text wrapper that can prepare a supplied voice source.
 
 ```text
-synthesize_text(text)
-    -> optional Phrasplit sentence segmentation
-    -> for each sentence: PocketFrontend.prepare_text()
-    -> PocketFrontend.split_for_model()
-    -> SentencePiece token IDs
-    -> OnnxVoice inference for each token-bounded model chunk
-    -> ordered request-local waveform concatenation
-    -> RenderedSegment
+PocketRuntime.synthesize(SynthesisRequest(...))
+    -> validate request, language, config, and voice
+    -> PocketFrontend.encode(complete request text) exactly once
+    -> compare token count with bundle capacity
+    -> one OnnxVoice inference, or typed capacity error
+    -> apply configured static voice level
+    -> finite mono float32 SynthesisResult
 
-synthesize(SynthesisSegment(...)) / iter_chunks(SynthesisSegment(...))
-    -> skip linguistic sentence segmentation
-    -> PocketFrontend.prepare_text() / split_for_model()
-    -> SentencePiece token IDs / OnnxVoice inference
+pocketsynth.convenience.synthesize_with_runtime(...)
+    -> optional sentence segmentation (Phrasplit is opt-in)
+    -> PocketRuntime.iter_chunks() for model-limit subdivision
+    -> ordered waveform joining
+    -> RenderedSegment
 ```
 
-Phrasplit finds linguistic boundaries; `PocketFrontend.split_for_model()` guarantees that every model request respects the token ceiling. A Phrasplit sentence is never repacked with the following sentence, though one oversized sentence can become multiple model chunks. Chunk indices start at zero for each request. No synthetic silence is inserted between chunks.
+`PocketRuntime.iter_chunks()` is an explicit chunked-rendering operation. It divides only at Pocket model limits and does not perform sentence segmentation. The convenience module owns calls to `split_text_for_synthesis`; strict runtime modules do not import it. Convenience functions return `RenderedSegment` and must not be mistaken for atomic synthesis.
 
 ## Runtime and bundle lifecycle
 
-`PocketRuntime.load(directory)` opens a concrete local bundle and is network-free. `PocketRuntime.from_pretrained(bundle)` installs or resolves a managed bundle through OnnxVoice and then opens its runtime. Both paths expose bundle metadata, language, sample rate, predefined voices, token inference, voice preparation, diagnostics, and idempotent close/context-manager lifecycle.
+`PocketRuntime.load(directory)` opens a concrete local bundle without network access. `PocketRuntime.from_pretrained(bundle)` resolves and opens a managed bundle through OnnxVoice. Both expose bundle metadata, language, sample rate, predefined voices, voice preparation, token inference, diagnostics, and idempotent close/context-manager lifecycle.
 
-PocketSynth owns the compatibility assertion between an explicit request language and the active bundle language. `None` accepts the bundle-declared language. It does not select or switch bundles.
+An explicit request language is a compatibility assertion against the active bundle. `None` accepts the bundle-declared language. PocketSynth does not select or switch bundles.
 
 ## Voice conditioning
 
-The bundle is the acoustic/runtime target. `PreparedVoice` is a reusable conditioning state for that bundle. Reference WAV data is validated as mono PCM16, resampled to the bundle rate, converted to the canonical conditioning representation, and encoded by OnnxVoice once. Its stable fingerprint is derived from the canonical sample-rate audio. A predefined voice fingerprint contains the bundle identity and declared voice name. No asset revision is invented when OnnxVoice does not expose one.
+`PreparedVoice` is reusable conditioning state for a compatible bundle and source revision. Reference WAV data is validated as mono PCM16, resampled to the bundle rate, and encoded by OnnxVoice. Its stable identity is based on normalized accepted audio and sample rate. A predefined voice identity includes bundle ID, voice name, and source revision when available.
+
+Voice-level configuration can leave audio unchanged, apply a catalog calibration, or explicitly override gain. Missing calibration is reported in metadata; PocketSynth does not invent measurements or measure loudness per request.
 
 ## Generation and results
 
-`GenerationConfig` contains only Pocket inference controls: temperature, LSD steps, maximum frames, and frames after EOS. When frames-after-EOS is omitted, PocketRuntime uses the bundle recommendation.
+`GenerationConfig` contains Pocket inference controls: temperature, LSD steps, maximum frames, and frames after EOS. When frames-after-EOS is omitted, PocketRuntime uses the bundle recommendation.
 
-`RenderedSegment` contains finite mono float32 audio at the bundle's native sample rate, the caller ID and text, resolved language, flattened token IDs, request-local chunks, and engine-only diagnostics/timing. WAV conversion clamps samples when writing PCM16. Output gain, loudness, and mastering are caller-owned.
-
-## Removed responsibility boundary
-
-PocketSynth no longer parses SSMD, prepares semantic speech, creates plans or document units, resolves logical voice bindings, interprets directives or pause policy, stores markers, creates AudioJobs, runs a composer, or assembles document timelines. Those responsibilities remain with the caller and its selected document/audio tools.
+`SynthesisResult` contains finite mono float32 audio at the bundle's native sample rate, request ID and text, resolved language, empty word timings when the engine has none, and structured bundle, voice, token, generation, calibration, diagnostics, and timing metadata. WAV conversion clamps samples when writing PCM16. Output mastering remains caller-owned.

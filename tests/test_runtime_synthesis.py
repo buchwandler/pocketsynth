@@ -5,12 +5,16 @@ import numpy as np
 import pytest
 
 from pocketsynth.config import GenerationConfig
-from pocketsynth.errors import BundleLanguageError, ModelInferenceError, RuntimeClosedError
-from pocketsynth.frontend import PocketFrontend
+from pocketsynth.errors import (
+    EmptyTextError,
+    InvalidLanguageError,
+    ModelInferenceError,
+    RuntimeClosedError,
+)
 from pocketsynth.runtime import PocketRuntime
-from pocketsynth.types import SynthesisSegment
+from pocketsynth.types import SynthesisRequest, SynthesisSegment
 from pocketsynth.voice import PreparedVoice
-from tests.fakes import FakeBundleMetadata, FakeProcessor
+from tests.fakes import FakeBundleMetadata
 
 
 class FakeFrontend:
@@ -59,9 +63,9 @@ def make_voice() -> PreparedVoice:
     return PreparedVoice(state=object(), sample_rate=24_000, bundle_id="english_2026-04")
 
 
-def test_synthesize_renders_one_request_and_propagates_generation_controls() -> None:
+def test_synthesize_renders_one_atomic_request_and_propagates_config() -> None:
     runtime, backend = make_runtime()
-    generation = GenerationConfig(
+    config = GenerationConfig(
         temperature=1.2,
         lsd_steps=3,
         max_frames=100,
@@ -70,9 +74,9 @@ def test_synthesize_renders_one_request_and_propagates_generation_controls() -> 
     voice = make_voice()
 
     result = runtime.synthesize(
-        SynthesisSegment(id="line-007", text="hello", language="EN-us"),
+        SynthesisRequest(id="line-007", text="hello", language="EN-us"),
         voice=voice,
-        generation=generation,
+        config=config,
     )
 
     assert len(backend.calls) == 1
@@ -80,11 +84,11 @@ def test_synthesize_renders_one_request_and_propagates_generation_controls() -> 
     assert result.id == "line-007"
     assert result.text == "hello"
     assert result.language == "en"
-    assert result.token_ids == tuple(token_ids)
+    assert result.metadata["token_count"] == len(token_ids)
+    assert not hasattr(result, "chunks")
     np.testing.assert_array_equal(result.audio, np.asarray(token_ids, dtype=np.float32))
     assert result.audio.dtype == np.float32
     assert result.sample_rate == 24_000
-    assert len(result.chunks) == 1
     assert kwargs == {
         "voice_state": voice.state,
         "temperature": 1.2,
@@ -92,21 +96,6 @@ def test_synthesize_renders_one_request_and_propagates_generation_controls() -> 
         "max_frames": 100,
         "frames_after_eos": 4,
     }
-
-
-def test_long_request_chunks_are_joined_in_order_without_silence() -> None:
-    runtime, backend = make_runtime()
-
-    result = runtime.synthesize(
-        SynthesisSegment(id="long", text="abc|de"),
-        voice=make_voice(),
-    )
-
-    expected = np.asarray([ord(char) for char in "abcde"], dtype=np.float32)
-    assert len(backend.calls) == 2
-    assert [chunk.text for chunk in result.chunks] == ["abc", "de"]
-    assert result.token_ids == tuple(int(value) for value in expected)
-    np.testing.assert_array_equal(result.audio, expected)
 
 
 def test_iter_chunks_yields_model_chunks_with_request_local_indexes() -> None:
@@ -126,8 +115,11 @@ def test_iter_chunks_yields_model_chunks_with_request_local_indexes() -> None:
 def test_empty_or_whitespace_text_is_rejected_before_inference() -> None:
     runtime, backend = make_runtime()
 
-    with pytest.raises(ValueError, match="empty or whitespace"):
-        runtime.synthesize(SynthesisSegment(id="empty", text="  \t "), voice=make_voice())
+    with pytest.raises(EmptyTextError, match="empty or whitespace"):
+        runtime.synthesize(
+            SynthesisRequest(id="empty", text="  \t "),
+            voice=make_voice(),
+        )
 
     assert backend.calls == []
 
@@ -156,9 +148,9 @@ def test_frames_after_eos_uses_bundle_default_only_when_unspecified() -> None:
 def test_incompatible_language_fails_before_inference() -> None:
     runtime, backend = make_runtime()
 
-    with pytest.raises(BundleLanguageError, match="incompatible"):
+    with pytest.raises(InvalidLanguageError, match="incompatible"):
         runtime.synthesize(
-            SynthesisSegment(id="line", text="bonjour", language="fr"),
+            SynthesisRequest(id="line", text="bonjour", language="fr"),
             voice=make_voice(),
         )
 
@@ -225,88 +217,3 @@ def test_from_pretrained_delegates_install_and_resolved_open() -> None:
         cache_dir="cache",
         offline=True,
     )
-
-
-def test_synthesize_text_splits_each_sentence_in_order(monkeypatch) -> None:
-    runtime, backend = make_runtime()
-    text = "First sentence. Second sentence."
-    sentences = ("First sentence.", "Second sentence.")
-    with patch(
-        "pocketsynth.runtime.split_text_for_synthesis",
-        return_value=sentences,
-    ) as split_text:
-        result = runtime.synthesize_text(text, voice=make_voice())
-
-    split_text.assert_called_once_with(text, language="en", mode="phrasplit")
-    assert result.text == text
-    assert [chunk.text for chunk in result.chunks] == list(sentences)
-    assert [chunk.index for chunk in result.chunks] == [0, 1]
-    assert [call[0] for call in backend.calls] == [
-        runtime.frontend.encode(sentence) for sentence in sentences
-    ]
-    expected_audio = np.concatenate(
-        [np.asarray(token_ids, dtype=np.float32) for token_ids, _ in backend.calls]
-    )
-    np.testing.assert_array_equal(result.audio, expected_audio)
-
-
-def test_oversized_sentence_still_uses_pocket_model_chunking() -> None:
-    metadata = FakeBundleMetadata(language="en", max_token_per_chunk=4)
-    backend = FakeInferenceRuntime()
-    frontend = PocketFrontend("unused", metadata, processor=FakeProcessor())
-    with patch("pocketsynth.runtime.PocketFrontend", return_value=frontend):
-        runtime = PocketRuntime(
-            paths=None,
-            metadata=metadata,  # type: ignore[arg-type]
-            tokenizer_path=MagicMock(),
-            runtime=backend,
-            bundle_id="english_2026-04",
-            precision="int8",
-        )
-    text = "one two three four five six seven"
-    with patch(
-        "pocketsynth.runtime.split_text_for_synthesis",
-        return_value=(text,),
-    ) as split_text:
-        result = runtime.synthesize_text(text, voice=make_voice())
-
-    split_text.assert_called_once_with(text, language="en", mode="phrasplit")
-    assert [chunk.index for chunk in result.chunks] == [0, 1]
-    assert [chunk.text for chunk in result.chunks] == [
-        "one two three four",
-        "five six seven",
-    ]
-    assert all(len(chunk.token_ids) <= metadata.max_token_per_chunk for chunk in result.chunks)
-
-
-def test_none_mode_uses_model_limit_chunking_without_phrasplit() -> None:
-    runtime, backend = make_runtime()
-    with patch(
-        "phrasplit.split_sentences",
-        side_effect=AssertionError("Phrasplit must not be called"),
-    ):
-        result = runtime.synthesize_text(
-            "one|two",
-            voice=make_voice(),
-            sentence_split="none",
-        )
-
-    assert [chunk.text for chunk in result.chunks] == ["one", "two"]
-    assert [chunk.index for chunk in result.chunks] == [0, 1]
-    assert len(backend.calls) == 2
-
-
-def test_low_level_synthesize_does_not_use_phrasplit() -> None:
-    runtime, backend = make_runtime()
-    with patch(
-        "phrasplit.split_sentences",
-        side_effect=AssertionError("Phrasplit must not be called"),
-    ):
-        result = runtime.synthesize(
-            SynthesisSegment(id="low-level", text="First sentence. Second sentence."),
-            voice=make_voice(),
-        )
-
-    assert len(result.chunks) == 1
-    assert result.chunks[0].text == "First sentence. Second sentence."
-    assert len(backend.calls) == 1

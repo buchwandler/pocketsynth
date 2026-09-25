@@ -1,4 +1,4 @@
-"""Synthesize long prose with sentence splitting enabled or bypassed."""
+"""Demonstrate explicit sentence splitting in convenience rendering."""
 
 from __future__ import annotations
 
@@ -8,6 +8,7 @@ import os
 from _output import artefact_path
 
 from pocketsynth import PocketRuntime
+from pocketsynth.convenience import synthesize_with_runtime
 
 TEXT = (
     "Dr. Smith arrived early. He reviewed the notes carefully. "
@@ -20,7 +21,7 @@ OFFLINE = os.environ.get("POCKETSYNTH_EXAMPLE_OFFLINE") == "1"
 def main() -> int:
     parser = argparse.ArgumentParser(
         description=(
-            "Demonstrate default lightweight sentence segmentation and the "
+            "Demonstrate opt-in lightweight sentence segmentation and the "
             "sentence_split='none' bypass."
         )
     )
@@ -29,16 +30,12 @@ def main() -> int:
     split_output = artefact_path("long-text.wav")
     unsplit_output = artefact_path("long-text-no-split.wav")
     with PocketRuntime.from_pretrained(BUNDLE, offline=OFFLINE) as runtime:
-        result = runtime.synthesize_text(TEXT, voice="alba")
+        result = synthesize_with_runtime(runtime, TEXT, voice="alba", sentence_split="phrasplit")
         result.save_wav(split_output)
         for chunk in result.chunks:
             print(chunk.index, chunk.text)
 
-        unsplit_result = runtime.synthesize_text(
-            TEXT,
-            voice="alba",
-            sentence_split="none",
-        )
+        unsplit_result = synthesize_with_runtime(runtime, TEXT, voice="alba", sentence_split="none")
         unsplit_result.save_wav(unsplit_output)
 
     print(f"Sentence-split WAV: {split_output}")

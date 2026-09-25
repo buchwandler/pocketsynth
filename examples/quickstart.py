@@ -5,7 +5,7 @@ from __future__ import annotations
 import argparse
 from pathlib import Path
 
-from pocketsynth import synthesize_to_wav
+from pocketsynth.convenience import synthesize_to_wav
 
 
 def main(argv: list[str] | None = None) -> int:
