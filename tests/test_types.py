@@ -65,6 +65,13 @@ def test_rendered_audio_must_be_finite_mono_and_have_positive_rate() -> None:
         RenderedSegment("line", np.zeros(1), 0, "x", "en", ())
 
 
+def test_rendered_chunk_and_segment_reject_empty_audio() -> None:
+    with pytest.raises(ModelInferenceError, match="must not be empty"):
+        RenderedChunk(0, "", "", (), np.zeros(0), 24_000)
+    with pytest.raises(ModelInferenceError, match="must not be empty"):
+        RenderedSegment("empty", np.zeros(0), 24_000, "", "en", ())
+
+
 def test_generation_config_contains_only_pocket_inference_controls() -> None:
     config = GenerationConfig(temperature=1.2, lsd_steps=2, max_frames=20, frames_after_eos=0)
 

@@ -13,6 +13,7 @@ import numpy as np
 from .asset_progress import AssetProgressCallback
 from .audio import write_wav
 from .config import GenerationConfig
+from .errors import ModelInferenceError
 from .runtime import PocketRuntime
 from .text_split import SentenceSplitMode, split_text_for_synthesis
 from .types import RenderedChunk, RenderedSegment, SynthesisSegment
@@ -20,6 +21,8 @@ from .types import RenderedChunk, RenderedSegment, SynthesisSegment
 
 def _save_wav_atomically(result: RenderedSegment, destination: Path) -> None:
     """Write a WAV file atomically, creating parent directories."""
+    if result.audio.size == 0:
+        raise ModelInferenceError("result audio must not be empty")
     if destination.exists() and destination.is_dir():
         raise ValueError(f"output path is a directory: {destination}")
 
@@ -56,9 +59,8 @@ def synthesize_with_runtime(
         raise TypeError("text must be a string")
     if not text.strip():
         raise ValueError("text must not be empty or whitespace")
-    split_texts = split_text_for_synthesis(
-        text, language=runtime.bundle_language, mode=sentence_split
-    )
+    bundle_language = runtime._validate_language(language)
+    split_texts = split_text_for_synthesis(text, language=bundle_language, mode=sentence_split)
     if not split_texts:
         raise ValueError("text produced no sentence segments")
     prepared_voice = runtime.prepare_voice(voice)

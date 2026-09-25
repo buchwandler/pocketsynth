@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import wave
 from pathlib import Path
+from types import SimpleNamespace
 from unittest.mock import MagicMock, patch
 
 import numpy as np
@@ -15,6 +16,7 @@ from pocketsynth.convenience import (
     synthesize_to_wav,
     synthesize_with_runtime,
 )
+from pocketsynth.errors import InvalidLanguageError, ModelInferenceError
 from pocketsynth.types import RenderedChunk, RenderedSegment
 from pocketsynth.voice import PreparedVoice
 
@@ -45,6 +47,7 @@ def _make_chunk(text: str = "Hello") -> RenderedChunk:
 def _runtime_context(runtime: MagicMock) -> MagicMock:
     context = MagicMock()
     context.__enter__.return_value = runtime
+    runtime._validate_language.return_value = runtime.bundle_language
     context.__exit__.return_value = False
     return context
 
@@ -64,6 +67,18 @@ def test_save_wav_atomically_creates_parent_directories_and_valid_wav(tmp_path: 
 def test_save_wav_atomically_rejects_directory(tmp_path: Path) -> None:
     with pytest.raises(ValueError, match="is a directory"):
         _save_wav_atomically(_make_result(), tmp_path)
+
+
+def test_convenience_never_writes_zero_frame_wav(tmp_path: Path) -> None:
+    destination = tmp_path / "empty.wav"
+    result = SimpleNamespace(audio=np.array([], dtype=np.float32), sample_rate=24_000)
+
+    with patch("pocketsynth.convenience.synthesize", return_value=result):
+        with pytest.raises(ModelInferenceError, match="must not be empty"):
+            synthesize_to_wav("Hello", destination, bundle="test-bundle", voice="alba")
+
+    assert not destination.exists()
+    assert list(tmp_path.glob(".*.tmp")) == []
 
 
 def test_synthesize_validates_text_and_bundle() -> None:
@@ -153,13 +168,29 @@ def test_synthesize_defaults_to_no_sentence_splitting() -> None:
     assert runtime.iter_chunks.call_args.args[0].text == "Hello"
 
 
+def test_invalid_language_fails_before_voice_preparation() -> None:
+    runtime = MagicMock()
+    runtime._validate_language.side_effect = InvalidLanguageError("language mismatch")
+
+    with pytest.raises(InvalidLanguageError, match="language mismatch"):
+        synthesize_with_runtime(
+            runtime, "Bonjour.", voice="alba", language="fr", sentence_split="phrasplit"
+        )
+
+    runtime.prepare_voice.assert_not_called()
+
+
 def test_synthesize_with_runtime_applies_opt_in_sentence_splitting() -> None:
     runtime = MagicMock()
     runtime.bundle_language = "en"
+    runtime._validate_language.return_value = "en"
     runtime.sample_rate = 24_000
     prepared = PreparedVoice(state=object(), sample_rate=24_000, bundle_id="test-bundle")
     runtime.prepare_voice.return_value = prepared
-    runtime.iter_chunks.side_effect = [[_make_chunk("First.")], [_make_chunk("Second.")]]
+    runtime.iter_chunks.side_effect = [
+        [_make_chunk("First model chunk"), _make_chunk("First final chunk")],
+        [_make_chunk("Second model chunk"), _make_chunk("Second final chunk")],
+    ]
     sentences = ("First.", "Second.")
     with patch("pocketsynth.convenience.split_text_for_synthesis", return_value=sentences) as split:
         result = synthesize_with_runtime(
@@ -167,9 +198,17 @@ def test_synthesize_with_runtime_applies_opt_in_sentence_splitting() -> None:
         )
 
     split.assert_called_once_with("First. Second.", language="en", mode="phrasplit")
+    runtime.prepare_voice.assert_called_once_with("alba")
+    assert all(call.kwargs["voice"] is prepared for call in runtime.iter_chunks.call_args_list)
     assert runtime.iter_chunks.call_count == 2
     assert [call.args[0].text for call in runtime.iter_chunks.call_args_list] == list(sentences)
-    assert [chunk.index for chunk in result.chunks] == [0, 1]
+    assert [chunk.index for chunk in result.chunks] == [0, 1, 2, 3]
+    assert [chunk.text for chunk in result.chunks] == [
+        "First model chunk",
+        "First final chunk",
+        "Second model chunk",
+        "Second final chunk",
+    ]
     assert result.metadata["sentence_split"] == "phrasplit"
     assert result.text == "First. Second."
 
@@ -191,6 +230,7 @@ def test_synthesize_to_wav_delegates_to_synthesize_and_writes_atomically(
             sentence_split=sentence_split,
         )
 
+    assert isinstance(output, Path)
     assert output == destination
     render.assert_called_once_with(
         "Hello",

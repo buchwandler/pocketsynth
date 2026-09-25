@@ -1,128 +1,122 @@
-# Pocket runtime contract
+# PocketSynth and OnnxVoice contract
 
-This document records the current boundary between PocketSynth and OnnxVoice. The former implementation brief described Pocket support as missing. Pocket catalog registration, managed installation, local multi-file opening, and the v2 runtime contract are now companion OnnxVoice responsibilities.
+This document describes the current integration boundary. PocketSynth owns a small synthesis engine API for already-prepared speakable text. OnnxVoice owns Pocket model and voice-state assets and ONNX execution. Applications own document semantics and final audio composition.
+
+```text
+source document / SSMD
+        -> application orchestration and speakable-text preparation
+        -> PocketRuntime strict request API
+             or explicit convenience sentence/model chunking
+        -> OnnxVoice Pocket runtime
+        -> SynthesisResult or RenderedSegment
+        -> caller-owned composition and output policy
+```
 
 ## Ownership
 
-```text
-pocket-onnx-bundles catalog
-        -> OnnxVoice catalog, cache, installation, and runtime
-        -> PocketSynth frontend, policy, voice lifecycle, composition, and WAV API
-```
-
 PocketSynth owns:
 
-- UtterPlan planning and adaptation;
-- SentencePiece tokenization and Pocket text normalization;
-- token-limit subdivision before runtime calls;
-- logical voice bindings and reusable `PreparedVoice` wrappers;
-- generation configuration;
-- AudioCompose timeline construction and result types;
-- examples, CLI behavior, and application-facing progress events.
+- local and managed runtime lifecycle;
+- Pocket text normalization and SentencePiece encoding;
+- one-request validation and model-capacity checks;
+- concrete `PreparedVoice` wrappers and Pocket generation controls;
+- explicit model-limit chunk iteration;
+- optional convenience sentence segmentation and chunk joining;
+- waveform validation, diagnostics, and WAV conversion.
 
 OnnxVoice owns:
 
-- the Pocket catalog and bundle aliases;
-- download, cache, checksum, and installation manifests;
-- ORT providers, sessions, and session options;
-- bundle graph metadata and state manifests;
-- Mimi voice encoding and decoding;
-- Flow-LM and flow matching;
-- canonical native-rate inference output.
+- the Pocket bundle catalog, aliases, installation, cache, and integrity checks;
+- providers, ONNX sessions, graph contracts, and inference;
+- predefined voice-state lookup, downloads, credentials, and cache integrity;
+- reference-voice encoding, Pocket decoding, and native sample rates.
 
-PocketSynth must not parse graph input/output names, state manifests, Flow-LM cache layout, or Mimi decoder state. It may consume high-level bundle metadata such as language, sample rate, token limit, text normalization flags, and recommended frames after EOS.
+The application owns document parsing, SSMD handling, written-to-spoken preparation, logical voice roles, semantic pauses, markers, timelines, external audio, and final mastering. PocketSynth does not depend on UtterPlan, AudioCompose, or SSMD.
 
-## Minimum compatible runtime
+## Compatible OnnxVoice version
 
-PocketSynth declares `onnxvoice>=0.1.10,<0.2`. The compatible runtime exposes:
+PocketSynth requires `onnxvoice>=0.1.12,<0.2`. The CPU and GPU extras use the same supported version range and request OnnxVoice's `pocket` support. OnnxVoice 0.1.12 or newer in this range provides the Pocket runtime and local bundle support used here.
+
+## Runtime lifecycle and voices
+
+`PocketRuntime.load(directory)` opens a concrete local bundle without catalog access or network activity. `PocketRuntime.from_pretrained(bundle)` resolves and opens a managed bundle through OnnxVoice.
+
+`runtime.prepare_voice(source)` returns a reusable `PreparedVoice`. Sources include a bundle-declared predefined voice name, a mono PCM16 reference WAV, in-memory audio with a sample rate, or a compatible prepared voice. PocketSynth validates and prepares reference audio; OnnxVoice encodes and resolves voice state. A declared predefined voice is not a promise that its separate asset is public or already cached. Some assets require accepted upstream terms and authenticated Hugging Face access.
 
 ```python
-installation = onnxvoice.OnnxVoice().install(
-    "pocket:english_2026-04",
-    quality="int8",
-)
+from pocketsynth import PocketRuntime, SynthesisRequest
 
-with onnxvoice.OnnxVoice().open(installation) as runtime:
-    voice = runtime.prepare_voice(reference_audio, sample_rate=24000)
-    result = runtime.infer(
-        token_ids,
-        voice_state=voice,
-        temperature=0.7,
-        lsd_steps=1,
+with PocketRuntime.from_pretrained("english_2026-04") as runtime:
+    voice = runtime.prepare_voice("alba")
+    result = runtime.synthesize(
+        SynthesisRequest(id="line-001", text="Hello from Pocket.", language="en"),
+        voice=voice,
+    )
+    result.save_wav("hello.wav")
+```
+
+## Strict runtime API
+
+`PocketRuntime.synthesize(request, voice=..., config=..., voice_level=...)` validates a complete `SynthesisRequest`, encodes its text once, checks model capacity once, and performs at most one inference. It returns a finite mono float32 `SynthesisResult`. It never performs sentence splitting or silently divides an oversized request; over-capacity text raises `SynthesisInputTooLongError`.
+
+`PocketRuntime.synthesize_text(text, voice=...)` is a strict plain-text wrapper. It prepares a non-`PreparedVoice` source and submits one request. `PocketRuntime.iter_chunks(segment, voice=...)` is a separate explicit operation that divides at the model token limit and yields `RenderedChunk` values. It does not run sentence segmentation.
+
+## Convenience rendering
+
+The convenience API is an explicit module import, not a package-root export:
+
+```python
+from pocketsynth import PocketRuntime
+from pocketsynth.convenience import synthesize_with_runtime
+
+with PocketRuntime.from_pretrained("english_2026-04") as runtime:
+    rendered = synthesize_with_runtime(
+        runtime,
+        "Dr. Smith arrived early. Then he started the presentation.",
+        voice="alba",
+        sentence_split="phrasplit",
     )
 ```
 
-`PocketVoiceState` is an OnnxVoice implementation detail. PocketSynth exposes it through the stable `PreparedVoice` wrapper, so application code does not depend on whether the state is an embedding object, mapping, or another reusable representation.
+`sentence_split="phrasplit"` opts into Phrasplit's lightweight regex backend with spaCy disabled. `sentence_split="none"` bypasses Phrasplit entirely. Both modes can still use Pocket model-limit chunking. The convenience path prepares the voice once, preserves chunk order, and joins waveform chunks into a `RenderedSegment`.
 
-## Managed and local opening
+The managed convenience functions `synthesize()` and `synthesize_to_wav()` are also in `pocketsynth.convenience`. The former returns a `RenderedSegment`; the latter writes a mono PCM16 WAV atomically and returns the destination `Path`. Sentence splitting defaults to `none` for these functions and for the CLI.
 
-Managed use resolves and installs through OnnxVoice:
+## Real-model checks
 
-```python
-with PocketPipeline.from_pretrained(
-    "english_2026-04",
-    precision="int8",
-) as pipeline:
-    pipeline.set_default_voice("reference.wav")
-    result = pipeline("Hello from Pocket.")
-```
+The integration tests are gated by assets and access. They verify positive, finite, non-silent audio and WAV format.
 
-Local use is network-free and passes semantic component files to OnnxVoice:
-
-```python
-with PocketPipeline.load("./onnx/english_2026-04", precision="int8") as pipeline:
-    pipeline.set_default_voice("reference.wav")
-    result = pipeline("Hello from Pocket.")
-```
-
-The local bundle contains `bundle.json`, tokenizer and conditioning files, and the selected ONNX components. PocketSynth locates those files but does not open their graphs itself.
-
-## Voice and token contracts
-
-The application boundary accepts mono 16-bit PCM WAV prompts. PocketSynth reports the actual channels, sample width, sample rate, and compression when that contract is violated, and resamples valid prompts to the bundle rate.
-
-UtterPlan semantic units become Pocket render spans. The Pocket frontend then applies SentencePiece and splits model calls so every token array is at most `max_token_per_chunk`. OnnxVoice still rejects an oversized array as a defensive runtime contract check. OnnxVoice does not own text semantics or silently split text.
-
-A prepared voice is reusable:
-
-```python
-voice = pipeline.prepare_voice("reference.wav")
-pipeline.set_default_voice(voice)
-pipeline("First sentence.")
-pipeline("Second sentence.")
-```
-
-The Mimi encoder is called once for the prepared voice. Named predefined voice assets remain outside this package's managed bundle flow.
-
-## Progress contract
-
-OnnxVoice emits asset events for catalog, download, verification, and installation. PocketSynth maps those events to `AssetProgressEvent`, `AssetProgressCallback`, and `ConsoleAssetProgress` without exposing OnnxVoice event classes:
-
-```python
-from pocketsynth import ConsoleAssetProgress, PocketPipeline
-
-with PocketPipeline.from_pretrained(
-    "english_2026-04",
-    progress=ConsoleAssetProgress(),
-) as pipeline:
-    ...
-```
-
-## Acceptance checks
-
-The real local test uses:
+### Local bundle and reference WAV
 
 ```bash
 export POCKETSYNTH_TEST_BUNDLE_DIR=/path/to/onnx/english_2026-04
 export POCKETSYNTH_TEST_VOICE_WAV=/path/to/reference.wav
-pytest -q -m integration tests/integration/test_real_local_wav.py
+python -m pytest -q tests/integration/test_real_local_wav.py
+python -m pytest -q tests/test_first_wav_integration.py
 ```
 
-The managed test is network-marked and verifies catalog resolution, installation, inference, WAV format, cached reuse, and explicit offline reuse:
+### Managed bundle and reference WAV
 
 ```bash
 export POCKETSYNTH_TEST_VOICE_WAV=/path/to/reference.wav
-pytest -q -m 'integration and network' tests/integration/test_real_managed_wav.py
+python -m pytest -q -m 'integration and network' tests/integration/test_real_managed_wav.py
 ```
 
-Both checks require positive frame count, finite non-silent audio, mono channels, 16-bit PCM, and the bundle sample rate.
+`POCKETSYNTH_TEST_BUNDLE` may select a managed bundle; otherwise the test uses `english_2026-04`. It checks both online synthesis and reuse from the populated cache in offline mode.
+
+### Managed predefined voice
+
+After configuring gated Hugging Face access and credentials:
+
+```bash
+export POCKETSYNTH_TEST_PREDEFINED_VOICE=1
+python -m pytest -q -m 'integration and network' tests/integration/test_real_predefined_voice_wav.py
+```
+
+### Long-text modes
+
+With managed assets and access configured, run `python examples/long_text.py`. It writes one WAV using `sentence_split="phrasplit"` and another using `sentence_split="none"`. Check that both are mono PCM16, at the bundle sample rate, positive-duration, finite, and non-silent. The no-split path bypasses Phrasplit while retaining Pocket model-limit chunking. Listening to short outputs is useful in addition to checking their WAV structure.
+
+## 0.1 migration note
+
+There is no current `PocketPipeline`, `set_default_voice()`, UtterPlan integration, AudioCompose ownership, or package-root convenience export. Replace the old document-oriented pipeline with application-owned preparation and `PocketRuntime`; pass a concrete voice on each request. Use the explicit convenience module only when sentence/model chunking is desired. Applications that need document units, pauses, markers, or timelines must implement those responsibilities outside PocketSynth.

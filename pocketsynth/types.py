@@ -202,6 +202,8 @@ class RenderedChunk:
         self.audio = np.asarray(self.audio, dtype=np.float32)
         if self.audio.ndim != 1 or not np.all(np.isfinite(self.audio)):
             raise ModelInferenceError("chunk audio must be one-dimensional and finite")
+        if self.audio.size == 0:
+            raise ModelInferenceError("chunk audio must not be empty")
         if (
             isinstance(self.sample_rate, bool)
             or not isinstance(self.sample_rate, int)
@@ -234,6 +236,8 @@ class RenderedSegment:
         self.audio = np.asarray(self.audio, dtype=np.float32)
         if self.audio.ndim != 1 or not np.all(np.isfinite(self.audio)):
             raise ModelInferenceError("result audio must be one-dimensional and finite")
+        if self.audio.size == 0:
+            raise ModelInferenceError("result audio must not be empty")
         if (
             isinstance(self.sample_rate, bool)
             or not isinstance(self.sample_rate, int)

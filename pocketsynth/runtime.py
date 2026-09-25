@@ -21,7 +21,6 @@ from .bundle import BundleMetadata, BundlePaths, Precision
 from .config import GenerationConfig
 from .diagnostics import RuntimeDiagnostics, SynthesisTiming
 from .errors import (
-    BundleLanguageError,
     EmptyTextError,
     InvalidGenerationConfigError,
     InvalidLanguageError,
@@ -188,6 +187,17 @@ class PocketRuntime:
     def bundle_language(self) -> str:
         return resolve_bundle_language(self.metadata)
 
+    def _validate_language(self, language: str | None) -> str:
+        bundle_language = self.bundle_language
+        if language is not None and (
+            not language.strip() or normalize_language(language) != bundle_language
+        ):
+            raise InvalidLanguageError(
+                f"Language {language!r} is incompatible with Pocket bundle "
+                f"{self.bundle_id!r} (language {bundle_language!r})"
+            )
+        return bundle_language
+
     @property
     def sample_rate(self) -> int:
         return self.metadata.sample_rate
@@ -286,6 +296,8 @@ class PocketRuntime:
         audio = np.asarray(result.audio, dtype=np.float32)
         if audio.ndim != 1 or not np.all(np.isfinite(audio)):
             raise ModelInferenceError("inference audio must be one-dimensional and finite")
+        if audio.size == 0:
+            raise ModelInferenceError("inference audio must not be empty")
         return audio
 
     def iter_chunks(
@@ -301,12 +313,7 @@ class PocketRuntime:
             raise InvalidRequestError("segment must be a SynthesisSegment")
         if not segment.text.strip():
             raise EmptyTextError("segment text must not be empty or whitespace")
-        language = self.bundle_language
-        if segment.language is not None and normalize_language(segment.language) != language:
-            raise BundleLanguageError(
-                f"Language {segment.language!r} is incompatible with Pocket bundle "
-                f"{self.bundle_id!r} (language {language!r})"
-            )
+        self._validate_language(segment.language)
         if not isinstance(voice, PreparedVoice):
             raise InvalidVoiceError("voice must be a PreparedVoice")
         try:
@@ -353,13 +360,7 @@ class PocketRuntime:
             raise UnsupportedFeatureError(feature="linguistic_tokens")
         if request.pronunciation_overrides:
             raise UnsupportedFeatureError(feature="pronunciation_overrides")
-        language = self.bundle_language
-        if request.language is not None:
-            if not request.language.strip() or normalize_language(request.language) != language:
-                raise InvalidLanguageError(
-                    f"Language {request.language!r} is incompatible with Pocket bundle "
-                    f"{self.bundle_id!r} (language {language!r})"
-                )
+        language = self._validate_language(request.language)
         generation = GenerationConfig() if config is None else config
         if not isinstance(generation, GenerationConfig):
             raise InvalidGenerationConfigError("config must be a GenerationConfig")
@@ -450,6 +451,7 @@ class PocketRuntime:
         request = SynthesisRequest(id=id, text=text, language=language)
         if not request.text.strip():
             raise EmptyTextError("request text must not be empty or whitespace")
+        self._validate_language(language)
         try:
             prepared_voice = (
                 voice if isinstance(voice, PreparedVoice) else self.prepare_voice(voice)

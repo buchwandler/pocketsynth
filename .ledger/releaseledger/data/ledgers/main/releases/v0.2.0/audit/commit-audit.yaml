@@ -1,0 +1,214 @@
+schema_version: 1
+object_type: commit_audit_sheet
+versioning:
+  schema_version: 1
+  revision: 3
+release_version: v0.2.0
+git_base_ref: v0.1.0
+git_base_sha: 3756e8f71bba129d231e7effd99f90ea45b4fc33
+git_head_ref: HEAD
+git_head_sha: 5ed004dd39e0c41d3b11f5a6a9ec8b6c83cc52c4
+git_range: 3756e8f71bba129d231e7effd99f90ea45b4fc33..5ed004dd39e0c41d3b11f5a6a9ec8b6c83cc52c4
+commit_count: 3
+rows:
+  - sha: 9eabc2ea46c46580a988757af52fcd4c51eefc4a
+    source_ref: git:9eabc2ea46c46580a988757af52fcd4c51eefc4a
+    short_sha: 9eabc2e
+    changed_paths:
+      - .github/workflows/python-publish.yml
+      - README.md
+      - docs/architecture.md
+      - docs/changelog.md
+      - examples/README.md
+      - examples/basic.py
+      - examples/basic_local.py
+      - examples/first_wav_local.py
+      - examples/local_bundle.py
+      - examples/plan_roundtrip.py
+      - examples/predefined_voice.py
+      - examples/pretrained_pipeline.py
+      - examples/run_all.py
+      - pocketsynth/__init__.py
+      - pocketsynth/__main__.py
+      - pocketsynth/_onnxvoice.py
+      - pocketsynth/audio.py
+      - pocketsynth/audio_job.py
+      - pocketsynth/config.py
+      - pocketsynth/convenience.py
+      - pocketsynth/diagnostics.py
+      - pocketsynth/errors.py
+      - pocketsynth/frontend.py
+      - pocketsynth/language.py
+      - pocketsynth/pipeline.py
+      - pocketsynth/plan_adapter.py
+      - pocketsynth/planning.py
+      - pocketsynth/runtime.py
+      - pocketsynth/types.py
+      - pocketsynth/voice.py
+      - pyproject.toml
+      - tests/fakes.py
+      - tests/integration/test_real_local_wav.py
+      - tests/integration/test_real_managed_wav.py
+      - tests/integration/test_real_predefined_voice_wav.py
+      - tests/test_cli.py
+      - tests/test_convenience.py
+      - tests/test_first_wav_integration.py
+      - tests/test_frontend.py
+      - tests/test_package_boundary.py
+      - tests/test_pipeline.py
+      - tests/test_pipeline_fake_runtime.py
+      - tests/test_runtime_synthesis.py
+      - tests/test_types.py
+      - tests/test_voice.py
+    stats:
+      files_changed: 45
+      insertions: 1235
+      deletions: 2159
+    inspected: true
+    inspected_paths:
+      - README.md
+      - docs/architecture.md
+      - .github/workflows/python-publish.yml
+      - pocketsynth/__init__.py
+      - pocketsynth/__main__.py
+      - pocketsynth/config.py
+      - pocketsynth/convenience.py
+      - pocketsynth/errors.py
+      - pocketsynth/pipeline.py
+      - pocketsynth/runtime.py
+      - pocketsynth/types.py
+      - pyproject.toml
+    observed_behavior:
+      Removed the UtterPlan-driven PocketPipeline/document rendering
+      and AudioCompose composition surface. PocketRuntime became the direct engine for
+      prepared speakable text; convenience rendering returns request-local results.
+      Removed UtterPlan, AudioCompose, and SSMD runtime dependencies, and aligned OnnxVoice
+      extras to the Pocket-supported version range.
+    public_impact: public
+    decision: accepted
+    stale: false
+    evidence_subject: "feat: remove utterplan and simplify package"
+    target_entry_key: engine-boundary
+    target_entry_id: entry-0002
+    notes:
+      Coverage owner for the breaking engine/document boundary and removed package
+      coupling; additional API changes may use this commit as supporting provenance.
+  - sha: a3ad7a10e97301aa4e179d5f4e75131448333b44
+    source_ref: git:a3ad7a10e97301aa4e179d5f4e75131448333b44
+    short_sha: a3ad7a1
+    changed_paths:
+      - .ledger/releaseledger/data/ledgers/main/events/events.jsonl
+      - .ledger/releaseledger/data/ledgers/main/releases/v0.2.0/entries/entry-0001.md
+      - .ledger/releaseledger/data/ledgers/main/releases/v0.2.0/release.md
+      - README.md
+      - docs/architecture.md
+      - docs/changelog.md
+      - examples/README.md
+      - examples/long_text.py
+      - pocketsynth/__init__.py
+      - pocketsynth/__main__.py
+      - pocketsynth/convenience.py
+      - pocketsynth/runtime.py
+      - pocketsynth/text_split.py
+      - pyproject.toml
+      - tests/test_cli.py
+      - tests/test_convenience.py
+      - tests/test_examples.py
+      - tests/test_runtime_synthesis.py
+      - tests/test_text_split.py
+    stats:
+      files_changed: 19
+      insertions: 493
+      deletions: 38
+    inspected: true
+    inspected_paths:
+      - README.md
+      - docs/architecture.md
+      - examples/README.md
+      - examples/long_text.py
+      - pocketsynth/__main__.py
+      - pocketsynth/convenience.py
+      - pocketsynth/runtime.py
+      - pocketsynth/text_split.py
+      - pyproject.toml
+      - tests/test_convenience.py
+      - tests/test_text_split.py
+    observed_behavior:
+      Added optional lightweight Phrasplit sentence segmentation ahead
+      of Pocket model-limit splitting for convenience text synthesis. The mode can bypass
+      sentence segmentation entirely, spaCy is disabled, and ordered model chunks remain
+      capacity-bounded. Added the phrasplit dependency and long-text example.
+    public_impact: public
+    decision: accepted
+    stale: false
+    evidence_subject: "feat: add phrasplit to handle longer input text"
+    target_entry_key: phrasplit-long-text
+    target_entry_id: entry-0001
+    notes:
+      Update the existing accepted sentence-splitting entry and make this commit
+      the coverage owner for its Git ref.
+  - sha: 5ed004dd39e0c41d3b11f5a6a9ec8b6c83cc52c4
+    source_ref: git:5ed004dd39e0c41d3b11f5a6a9ec8b6c83cc52c4
+    short_sha: 5ed004d
+    changed_paths:
+      - README.md
+      - docs/architecture.md
+      - examples/README.md
+      - examples/download_and_synthesize.py
+      - examples/first_wav.py
+      - examples/long_text.py
+      - examples/quickstart.py
+      - pocketsynth/__init__.py
+      - pocketsynth/__main__.py
+      - pocketsynth/config.py
+      - pocketsynth/convenience.py
+      - pocketsynth/errors.py
+      - pocketsynth/runtime.py
+      - pocketsynth/types.py
+      - pocketsynth/voice.py
+      - pocketsynth/voice_level.py
+      - tests/test_cli.py
+      - tests/test_convenience.py
+      - tests/test_onnxvoice_boundary.py
+      - tests/test_package_boundary.py
+      - tests/test_runtime_strict.py
+      - tests/test_runtime_synthesis.py
+      - tests/test_text_split.py
+      - tests/test_types.py
+      - tests/test_voice.py
+    stats:
+      files_changed: 25
+      insertions: 1371
+      deletions: 389
+    inspected: true
+    inspected_paths:
+      - README.md
+      - docs/architecture.md
+      - pocketsynth/__init__.py
+      - pocketsynth/__main__.py
+      - pocketsynth/convenience.py
+      - pocketsynth/errors.py
+      - pocketsynth/runtime.py
+      - pocketsynth/types.py
+      - pocketsynth/voice.py
+      - pocketsynth/voice_level.py
+      - tests/test_convenience.py
+      - tests/test_onnxvoice_boundary.py
+      - tests/test_runtime_strict.py
+      - tests/test_types.py
+    observed_behavior:
+      Made PocketRuntime.synthesize() a strict SynthesisRequest API
+      that validates the whole request and performs at most one inference; moved chunked
+      text rendering into explicit convenience functions, with sentence splitting disabled
+      by default. Added typed request errors, static voice-level configuration, and
+      voice identity/revision metadata.
+    public_impact: public
+    decision: accepted
+    stale: false
+    evidence_subject: "feat: improve API for synthesize text"
+    target_entry_key: strict-request-and-voice-level
+    target_entry_id: entry-0004
+    notes:
+      Coverage owner for the strict request/API refinement; add a separate public
+      entry for the new optional voice-level behavior with this commit as supporting
+      provenance.

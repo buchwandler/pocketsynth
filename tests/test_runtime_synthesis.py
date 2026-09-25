@@ -135,6 +135,17 @@ def test_inference_rejects_nonfinite_audio() -> None:
         runtime.infer_tokens((1,), make_voice(), GenerationConfig())
 
 
+def test_inference_rejects_empty_audio() -> None:
+    runtime, _ = make_runtime()
+
+    def empty_infer(token_ids: list[int], **kwargs: object) -> SimpleNamespace:
+        return SimpleNamespace(audio=np.array([], dtype=np.float32), sample_rate=24_000)
+
+    runtime.runtime.infer = empty_infer
+    with pytest.raises(ModelInferenceError, match="must not be empty"):
+        runtime.infer_tokens((1,), make_voice(), GenerationConfig())
+
+
 def test_frames_after_eos_uses_bundle_default_only_when_unspecified() -> None:
     runtime, backend = make_runtime()
     voice = make_voice()
@@ -154,6 +165,16 @@ def test_incompatible_language_fails_before_inference() -> None:
             voice=make_voice(),
         )
 
+    assert backend.calls == []
+
+
+def test_synthesize_text_rejects_language_before_preparing_voice() -> None:
+    runtime, backend = make_runtime()
+    with patch.object(runtime, "prepare_voice") as prepare:
+        with pytest.raises(InvalidLanguageError, match="incompatible"):
+            runtime.synthesize_text("bonjour", voice="alba", language="fr")
+
+    prepare.assert_not_called()
     assert backend.calls == []
 
 

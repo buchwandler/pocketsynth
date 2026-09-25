@@ -57,7 +57,7 @@ synthesize_to_wav(
 )
 ```
 
-Convenience functions return a `RenderedSegment` and may split at model limits. Sentence splitting defaults to `"none"`; pass `sentence_split="phrasplit"` to opt in. These functions are not aliases for the strict runtime API and are not imported by `pocketsynth`.
+`pocketsynth.convenience.synthesize_with_runtime()` and `pocketsynth.convenience.synthesize()` return a `RenderedSegment`. `pocketsynth.convenience.synthesize_to_wav()` returns the destination `Path` after atomically writing the WAV. Convenience rendering may split at Pocket model limits. Sentence splitting defaults to `"none"`; pass `sentence_split="phrasplit"` to opt in. Convenience functions are not aliases for the strict runtime API and are not imported by `pocketsynth`.
 
 ## Text and model chunks
 
@@ -71,9 +71,7 @@ from pocketsynth import PocketRuntime
 
 with PocketRuntime.from_pretrained("english_2026-04") as runtime:
     long_text = "Dr. Smith arrived early. Then he started the presentation."
-    result = synthesize_with_runtime(
-        runtime, long_text, voice="alba", sentence_split="phrasplit"
-    )
+    result = synthesize_with_runtime(runtime, long_text, voice="alba", sentence_split="phrasplit")
 ```
 
 An explicit request language is a compatibility assertion against the active bundle. `None` uses the bundle language. PocketSynth does not switch bundles or route languages automatically.
@@ -135,6 +133,18 @@ PocketSynth does not import or require the neighboring document-planning or audi
 PocketSynth's engine API is strict and atomic: `PocketRuntime.synthesize()` accepts one `SynthesisRequest` and never splits it. `synthesize_text()` is the strict plain-text wrapper. Document and model-limit splitting lives in the explicit `pocketsynth.convenience` module and the CLI. Convenience imports are not loaded by importing `pocketsynth`.
 
 The strict API returns finite mono float32 audio with request and runtime metadata, but no chunk collection. Applications that deliberately need model-limit chunks can use `PocketRuntime.iter_chunks()` or the explicit convenience layer. Document pauses, markers, role routing, and final timelines remain application responsibilities.
+
+### Migration from 0.1
+
+| 0.1 API or responsibility                                     | 0.2 replacement                                                                                                                                                       |
+| ------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `PocketPipeline` and `set_default_voice()`                    | Open with `PocketRuntime.load()` or `from_pretrained()`, prepare a voice, and pass it to each synthesis call                                                          |
+| UtterPlan, document parsing, and semantic preparation         | Prepare speakable text in the application before calling PocketSynth                                                                                                  |
+| Implicit sentence/document splitting                          | Use `pocketsynth.convenience.synthesize_with_runtime()` or convenience `synthesize()` with `sentence_split="phrasplit"`; use `"none"` to bypass sentence segmentation |
+| Pipeline document-unit streaming                              | Use `PocketRuntime.iter_chunks()` only for explicit model-limit chunks; application code owns semantic units                                                          |
+| `AudioResult`, AudioJob, and AudioCompose timelines           | Use strict `SynthesisResult` or convenience `RenderedSegment`; compose timelines in the application                                                                   |
+| Package-root `synthesize()` and `synthesize_to_wav()` imports | Import these functions from `pocketsynth.convenience`                                                                                                                 |
+| `normalize_audio` and `volume` request controls               | Use static `VoiceLevelConfig` calibration where appropriate, or perform mastering in the application                                                                  |
 
 ## Examples and checks
 

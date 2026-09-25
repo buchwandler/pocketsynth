@@ -22,6 +22,8 @@ from .errors import (
     UnsupportedBundleError,
 )
 
+_ONNXVOICE_MINIMUM_VERSION = "0.1.12"
+
 
 @dataclass(frozen=True, slots=True)
 class ResolvedPocketBundle:
@@ -167,7 +169,7 @@ def open_local_bundle(
     except TypeError as exc:
         raise RuntimeCapabilityError(
             "Installed OnnxVoice does not yet support open_local(files=...) for Pocket bundles. "
-            "Upgrade OnnxVoice to >=0.1.12 for local Pocket bundle support."
+            f"Upgrade OnnxVoice to >={_ONNXVOICE_MINIMUM_VERSION} for local Pocket bundle support."
         ) from exc
 
 

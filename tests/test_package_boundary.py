@@ -6,6 +6,8 @@ import subprocess
 import sys
 from pathlib import Path
 
+from pocketsynth._onnxvoice import _ONNXVOICE_MINIMUM_VERSION
+
 ROOT = Path(__file__).resolve().parents[1]
 PACKAGE = ROOT / "pocketsynth"
 FORBIDDEN_IMPORTS = {"utterplan", "ssmd", "audiocompose"}
@@ -89,3 +91,6 @@ def test_project_metadata_has_only_supported_engine_dependencies() -> None:
     assert '"onnxvoice>=0.1.12,<0.2"' in metadata
     assert '"onnxvoice[cpu,pocket]>=0.1.12,<0.2"' in metadata
     assert '"onnxvoice[gpu,pocket]>=0.1.12,<0.2"' in metadata
+    onnxvoice_minimums = re.findall(r'"onnxvoice(?:\[[^]]+\])?>=([^,<"]+)', metadata)
+    assert onnxvoice_minimums
+    assert set(onnxvoice_minimums) == {_ONNXVOICE_MINIMUM_VERSION}
