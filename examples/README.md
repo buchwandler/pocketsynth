@@ -30,6 +30,16 @@ python examples/predefined_voice.py
 
 The script writes `example-artefacts/predefined_voice_alba.wav`. The bundle's `predefined_voice_names` declares compatibility only. Voice-state assets are separate, may require accepted Hugging Face access terms and authentication, and are resolved and cached by OnnxVoice. After the bundle and voice state are cached, rerun with `POCKETSYNTH_EXAMPLE_OFFLINE=1` to avoid network access.
 
+## Long-text synthesis
+
+`long_text.py` uses the bundle-declared `alba` voice and demonstrates both the default Phrasplit sentence boundaries and `sentence_split="none"`. It writes `long-text.wav` and `long-text-no-split.wav`. The `none` mode is useful when an application already owns segmentation or wants to minimize preprocessing.
+
+```bash
+python examples/long_text.py
+```
+
+Managed assets are fetched by default. Set `POCKETSYNTH_EXAMPLE_OFFLINE=1` to use cached assets only.
+
 ## Reference-WAV synthesis
 
 The managed CLI-style example uses a reference WAV:

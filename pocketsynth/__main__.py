@@ -52,7 +52,12 @@ def _synthesize(args: argparse.Namespace) -> int:
         runtime = PocketRuntime.load(args.bundle_dir, **runtime_options)
         bundle_label = str(args.bundle_dir)
     with runtime as active_runtime:
-        result = active_runtime.synthesize_text(args.text, voice=args.voice, generation=generation)
+        result = active_runtime.synthesize_text(
+            args.text,
+            voice=args.voice,
+            generation=generation,
+            sentence_split=args.sentence_split,
+        )
         result.save_wav(args.output)
     print(f"Output: {args.output}")
     print(f"Bundle: {bundle_label}")
@@ -153,6 +158,16 @@ def main(argv: list[str] | None = None) -> int:
     source.add_argument("--bundle")
     source.add_argument("--bundle-dir", type=Path)
     _add_runtime_options(synth)
+    synth.add_argument(
+        "--sentence-split",
+        choices=("phrasplit", "none"),
+        default="phrasplit",
+        help=(
+            'Split plain text into sentences before Pocket model chunking. "phrasplit" '
+            "uses Phrasplit's lightweight regex backend (no spaCy); "
+            '"none" disables sentence segmentation and applies only Pocket model-limit chunking.'
+        ),
+    )
     synth.add_argument(
         "--voice", required=True, help="bundle-declared voice name or local mono PCM16 WAV path"
     )

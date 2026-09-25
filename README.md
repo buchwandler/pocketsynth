@@ -66,7 +66,18 @@ synthesize_to_wav(
 
 ## Pocket text and model chunks
 
-Input text must already be speakable. PocketSynth does not parse documents, expand numbers or dates, or apply pronunciation directives. `PocketFrontend` performs Pocket-specific whitespace normalization, configured semicolon replacement and short-input padding, SentencePiece encoding, and token-limit subdivision.
+Input text must already be speakable. PocketSynth does not parse documents, expand numbers or dates, or apply pronunciation directives. The ergonomic plain-text APIs `PocketRuntime.synthesize_text()`, `synthesize()`, and `synthesize_to_wav()` split prose into sentences with Phrasplit's lightweight regex backend by default, then apply Pocket's model token limit to each sentence. This sentence segmentation is not document planning.
+
+Pass `sentence_split="none"` to bypass sentence segmentation and use only Pocket model-limit chunking. The low-level `PocketRuntime.synthesize(SynthesisSegment(...))` keeps that model-limit-only behavior. `PocketFrontend` owns Pocket-specific whitespace normalization, configured semicolon replacement and short-input padding, SentencePiece encoding, and token-limit subdivision.
+
+```python
+with PocketRuntime.from_pretrained("english_2026-04") as runtime:
+    long_text = "Dr. Smith arrived early. Then he started the presentation."
+    result = runtime.synthesize_text(long_text, voice="alba")
+    already_segmented = runtime.synthesize_text(
+        long_text, voice="alba", sentence_split="none"
+    )
+```
 
 Model chunks are request-local inference details. Their audio is joined in order with no document pauses or timeline composition. `iter_chunks()` yields those model chunks when incremental consumption is useful.
 
@@ -107,7 +118,7 @@ pocketsynth synthesize \
   "Hello from Pocket."
 ```
 
-Useful inference controls include `--temperature`, `--lsd-steps`, `--max-frames`, and `--frames-after-eos`. Asset controls include `--cache-dir`, `--offline`, `--refresh-catalog`, and `--force-download` for managed bundles.
+The `synthesize` command accepts `--sentence-split phrasplit` (the default lightweight regex backend, without spaCy) or `--sentence-split none` to disable sentence segmentation and apply only Pocket model-limit chunking. Other inference controls include `--temperature`, `--lsd-steps`, `--max-frames`, and `--frames-after-eos`. Asset controls include `--cache-dir`, `--offline`, `--refresh-catalog`, and `--force-download` for managed bundles.
 
 ## Orchestrated use
 

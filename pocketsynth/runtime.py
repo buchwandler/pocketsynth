@@ -29,6 +29,7 @@ from .errors import (
 from .frontend import PocketFrontend
 from .language import bundle_language as resolve_bundle_language
 from .language import normalize_language
+from .text_split import SentenceSplitMode, split_text_for_synthesis
 from .types import RenderedChunk, RenderedSegment, SynthesisSegment
 from .voice import PreparedVoice, prepare_voice
 
@@ -253,6 +254,7 @@ class PocketRuntime:
         *,
         voice: PreparedVoice,
         generation: GenerationConfig | None = None,
+        sentence_split: SentenceSplitMode = "none",
     ) -> Iterator[tuple[RenderedChunk, float, float]]:
         self._ensure_open()
         if not isinstance(segment, SynthesisSegment):
@@ -268,31 +270,43 @@ class PocketRuntime:
         voice.validate_compatible(bundle_id=self.bundle_id, sample_rate=self.sample_rate)
         config = generation or GenerationConfig()
         frontend_started = time.perf_counter()
-        model_texts = self.frontend.split_for_model(segment.text)
-        split_ms = (time.perf_counter() - frontend_started) * 1000
-        if not model_texts:
+        outer_texts = split_text_for_synthesis(
+            segment.text,
+            language=language,
+            mode=sentence_split,
+        )
+        pending_frontend_ms = (time.perf_counter() - frontend_started) * 1000
+        if not outer_texts:
             raise ValueError("segment text must not be empty or whitespace")
-        for index, model_text in enumerate(model_texts):
+        chunk_index = 0
+        for outer_text in outer_texts:
             frontend_started = time.perf_counter()
-            token_ids = self.frontend.encode(model_text)
-            frontend_ms = (time.perf_counter() - frontend_started) * 1000
-            if index == 0:
-                frontend_ms += split_ms
-            inference_started = time.perf_counter()
-            audio = self.infer_tokens(token_ids, voice, config)
-            inference_ms = (time.perf_counter() - inference_started) * 1000
-            yield (
-                RenderedChunk(
-                    index=index,
-                    text=model_text,
-                    model_text=model_text,
-                    token_ids=token_ids,
-                    audio=audio,
-                    sample_rate=self.sample_rate,
-                ),
-                frontend_ms,
-                inference_ms,
-            )
+            model_texts = self.frontend.split_for_model(outer_text)
+            pending_frontend_ms += (time.perf_counter() - frontend_started) * 1000
+            if not model_texts:
+                raise ValueError("segment text must not be empty or whitespace")
+            for model_text in model_texts:
+                frontend_started = time.perf_counter()
+                token_ids = self.frontend.encode(model_text)
+                frontend_ms = (time.perf_counter() - frontend_started) * 1000
+                frontend_ms += pending_frontend_ms
+                pending_frontend_ms = 0.0
+                inference_started = time.perf_counter()
+                audio = self.infer_tokens(token_ids, voice, config)
+                inference_ms = (time.perf_counter() - inference_started) * 1000
+                yield (
+                    RenderedChunk(
+                        index=chunk_index,
+                        text=model_text,
+                        model_text=model_text,
+                        token_ids=token_ids,
+                        audio=audio,
+                        sample_rate=self.sample_rate,
+                    ),
+                    frontend_ms,
+                    inference_ms,
+                )
+                chunk_index += 1
 
     def iter_chunks(
         self,
@@ -315,12 +329,30 @@ class PocketRuntime:
         generation: GenerationConfig | None = None,
     ) -> RenderedSegment:
         """Render one prepared-text request as an independent Pocket result."""
+        return self._synthesize_impl(
+            segment,
+            voice=voice,
+            generation=generation,
+            sentence_split="none",
+        )
+
+    def _synthesize_impl(
+        self,
+        segment: SynthesisSegment,
+        *,
+        voice: PreparedVoice,
+        generation: GenerationConfig | None = None,
+        sentence_split: SentenceSplitMode,
+    ) -> RenderedSegment:
         started = time.perf_counter()
         chunks: list[RenderedChunk] = []
         frontend_ms = 0.0
         inference_ms = 0.0
         for chunk, chunk_frontend_ms, chunk_inference_ms in self._iter_chunks_with_timing(
-            segment, voice=voice, generation=generation
+            segment,
+            voice=voice,
+            generation=generation,
+            sentence_split=sentence_split,
         ):
             chunks.append(chunk)
             frontend_ms += chunk_frontend_ms
@@ -351,13 +383,15 @@ class PocketRuntime:
         id: str = "speech",
         language: str | None = None,
         generation: GenerationConfig | None = None,
+        sentence_split: SentenceSplitMode = "phrasplit",
     ) -> RenderedSegment:
         """Prepare a concrete voice if needed, then synthesize one text request."""
         prepared_voice = voice if isinstance(voice, PreparedVoice) else self.prepare_voice(voice)
-        return self.synthesize(
+        return self._synthesize_impl(
             SynthesisSegment(id=id, text=text, language=language),
             voice=prepared_voice,
             generation=generation,
+            sentence_split=sentence_split,
         )
 
     @property

@@ -14,6 +14,7 @@ dependencies = [
   "numpy>=1.23",
   "sentencepiece>=0.2,<0.3",
   "onnxvoice>=0.1.12,<0.2",
+  "phrasplit>=0.3.4,<0.4",
 ]
 keywords = ["tts", "text-to-speech", "pocket-tts", "onnx", "speech", "onnxruntime"]
 classifiers = [

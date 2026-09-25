@@ -1,6 +1,6 @@
 # Architecture
 
-PocketSynth is a Pocket TTS synthesis engine. Its public session is `PocketRuntime`, and its input is already-prepared speakable text plus a resolved Pocket bundle and concrete voice conditioning state.
+PocketSynth is a Pocket TTS synthesis engine. `PocketRuntime.synthesize_text()` is its ergonomic plain-text entry point; it segments sentences with Phrasplit's lightweight backend by default before Pocket model-limit chunking. `PocketRuntime.synthesize(SynthesisSegment(...))` remains a low-level prepared-request API. Both use a resolved Pocket bundle and concrete voice conditioning state.
 
 ```text
 source document / SSMD
@@ -16,7 +16,8 @@ application orchestration and document planning
 |                  PocketSynth                  |
 |                                               |
 | PocketRuntime lifecycle                       |
-| Pocket-specific text normalization             |
+| Optional Phrasplit sentence segmentation      |
+| Pocket-specific text normalization            |
 | SentencePiece encoding                        |
 | model token-limit chunking                    |
 | reference/predefined voice preparation        |
@@ -37,7 +38,7 @@ application orchestration and document planning
 ## Ownership
 
 1. **Application orchestration and document planning** own source parsing, SSMD, written-to-spoken preparation, semantic units, language routing, logical voice roles, directives, semantic pauses, and marker resolution.
-2. **PocketSynth** owns bundle/runtime lifecycle, Pocket-specific model text normalization, SentencePiece encoding, model token-limit chunking, concrete voice preparation, generation controls, waveform validation, request-local model-chunk joining, diagnostics, and WAV convenience.
+2. **PocketSynth** owns bundle/runtime lifecycle, optional lightweight sentence segmentation for ergonomic text APIs, Pocket-specific model text normalization, SentencePiece encoding, model token-limit chunking, concrete voice preparation, generation controls, waveform validation, request-local model-chunk joining, diagnostics, and WAV convenience.
 3. **OnnxVoice** owns Pocket catalog and asset resolution, installation and cache integrity, provider selection, ONNX sessions, graph contracts, predefined voice-state resolution, Mimi voice encoding, Flow-LM generation, flow matching, decoding, native sample rate, and runtime diagnostics.
 4. **Application composition** owns explicit silence, clips, timeline position, markers, resampling/output policy, external audio, and final mastering.
 
@@ -45,19 +46,27 @@ PocketSynth has no runtime dependency on the document planner or composition lay
 
 ## Synthesis request and model chunks
 
-A `SynthesisSegment` is one caller-owned request. Its ID is opaque and is copied unchanged into the resulting `RenderedSegment`. PocketSynth does not interpret it as a document unit or retain plan IDs, markers, timeline offsets, semantic pauses, or logical voice roles.
+A `SynthesisSegment` is one caller-owned low-level request. Its ID is opaque and is copied unchanged into the resulting `RenderedSegment`. PocketSynth does not interpret it as a document unit or retain plan IDs, markers, timeline offsets, semantic pauses, or logical voice roles.
+
+The ergonomic plain-text path supports optional sentence segmentation. `synthesize_text()` defaults to Phrasplit's lightweight regex backend, forced with `use_spacy=False`; `sentence_split="none"` bypasses it. In either mode, Pocket's model splitter is the final inference safety layer. Low-level `synthesize()` and `iter_chunks()` do not perform linguistic sentence segmentation.
 
 ```text
-SynthesisSegment
-    -> PocketFrontend.prepare_text()
+synthesize_text(text)
+    -> optional Phrasplit sentence segmentation
+    -> for each sentence: PocketFrontend.prepare_text()
     -> PocketFrontend.split_for_model()
     -> SentencePiece token IDs
     -> OnnxVoice inference for each token-bounded model chunk
     -> ordered request-local waveform concatenation
     -> RenderedSegment
+
+synthesize(SynthesisSegment(...)) / iter_chunks(SynthesisSegment(...))
+    -> skip linguistic sentence segmentation
+    -> PocketFrontend.prepare_text() / split_for_model()
+    -> SentencePiece token IDs / OnnxVoice inference
 ```
 
-Punctuation and whitespace are splitting heuristics used only when the model token limit requires subdivision. Chunk indices start at zero for each request. No synthetic document silence is inserted between chunks. `iter_chunks()` exposes the same request-local model chunks without turning them into semantic sentence units.
+Phrasplit finds linguistic boundaries; `PocketFrontend.split_for_model()` guarantees that every model request respects the token ceiling. A Phrasplit sentence is never repacked with the following sentence, though one oversized sentence can become multiple model chunks. Chunk indices start at zero for each request. No synthetic silence is inserted between chunks.
 
 ## Runtime and bundle lifecycle
 

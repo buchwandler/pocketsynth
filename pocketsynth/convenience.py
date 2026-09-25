@@ -12,6 +12,7 @@ from .asset_progress import AssetProgressCallback
 from .audio import write_wav
 from .config import GenerationConfig
 from .runtime import PocketRuntime
+from .text_split import SentenceSplitMode
 from .types import RenderedSegment
 
 
@@ -45,6 +46,7 @@ def synthesize(
     voice: Any,
     precision: Literal["int8", "fp32"] = "int8",
     language: str | None = None,
+    sentence_split: SentenceSplitMode = "phrasplit",
     temperature: float = 0.7,
     lsd_steps: int = 1,
     max_frames: int | None = None,
@@ -88,6 +90,7 @@ def synthesize(
             voice=prepared_voice,
             language=language,
             generation=generation,
+            sentence_split=sentence_split,
         )
 
 
@@ -99,6 +102,7 @@ def synthesize_to_wav(
     voice: Any,
     precision: Literal["int8", "fp32"] = "int8",
     language: str | None = None,
+    sentence_split: SentenceSplitMode = "phrasplit",
     temperature: float = 0.7,
     lsd_steps: int = 1,
     max_frames: int | None = None,
@@ -131,6 +135,7 @@ def synthesize_to_wav(
         offline=offline,
         refresh_catalog=refresh_catalog,
         force_download=force_download,
+        sentence_split=sentence_split,
         progress=progress,
     )
     _save_wav_atomically(result, destination)

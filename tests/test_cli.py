@@ -8,7 +8,17 @@ from pocketsynth.__main__ import main
 
 
 @pytest.mark.parametrize("voice", ["alba", "voice.wav"])
-def test_synthesize_cli_wires_generation_and_cache_options(tmp_path, voice) -> None:
+@pytest.mark.parametrize(
+    ("sentence_split_args", "expected_sentence_split"),
+    [
+        ([], "phrasplit"),
+        (["--sentence-split", "phrasplit"], "phrasplit"),
+        (["--sentence-split", "none"], "none"),
+    ],
+)
+def test_synthesize_cli_wires_generation_and_cache_options(
+    tmp_path, voice, sentence_split_args, expected_sentence_split
+) -> None:
     runtime = MagicMock()
     context = MagicMock()
     context.__enter__.return_value = runtime
@@ -43,6 +53,7 @@ def test_synthesize_cli_wires_generation_and_cache_options(tmp_path, voice) -> N
                     str(tmp_path / "cache"),
                     "--provider",
                     "CPUExecutionProvider",
+                    *sentence_split_args,
                     "Hello",
                 ]
             )
@@ -62,6 +73,7 @@ def test_synthesize_cli_wires_generation_and_cache_options(tmp_path, voice) -> N
     args, kwargs = runtime.synthesize_text.call_args
     assert args == ("Hello",)
     assert kwargs["voice"] == voice
+    assert kwargs["sentence_split"] == expected_sentence_split
     generation = kwargs["generation"]
     assert generation.temperature == 0.4
     assert generation.lsd_steps == 3
@@ -135,3 +147,14 @@ def test_check_keeps_local_wav_path_string(tmp_path, capsys) -> None:
     assert status == 0
     assert "Voice WAV: OK (mono PCM16, sample rate 24000)" in capsys.readouterr().out
     read_wav.assert_called_once_with(wav_path)
+
+
+def test_synthesize_cli_documents_sentence_split_modes(capsys) -> None:
+    with pytest.raises(SystemExit) as exc_info:
+        main(["synthesize", "--help"])
+
+    assert exc_info.value.code == 0
+    help_text = " ".join(capsys.readouterr().out.split())
+    assert "--sentence-split {phrasplit,none}" in help_text
+    assert "Phrasplit's lightweight regex backend (no spaCy)" in help_text
+    assert "none" in help_text

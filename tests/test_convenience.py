@@ -73,6 +73,7 @@ def test_synthesize_uses_runtime_and_prepares_voice() -> None:
             "Hello",
             bundle="test-bundle",
             voice="alba",
+            sentence_split="none",
             language="en",
             temperature=0.5,
             lsd_steps=2,
@@ -108,13 +109,30 @@ def test_synthesize_uses_runtime_and_prepares_voice() -> None:
     assert args == ("Hello",)
     assert kwargs["voice"] is prepared
     assert kwargs["language"] == "en"
+    assert kwargs["sentence_split"] == "none"
     generation = kwargs["generation"]
     assert (generation.temperature, generation.lsd_steps) == (0.5, 2)
     assert generation.max_frames == 100
     assert generation.frames_after_eos == 0
 
 
-def test_synthesize_to_wav_delegates_to_synthesize_and_writes_atomically(tmp_path: Path) -> None:
+def test_synthesize_defaults_to_phrasplit() -> None:
+    runtime = MagicMock()
+    context = _runtime_context(runtime)
+    with patch(
+        "pocketsynth.convenience.PocketRuntime.from_pretrained",
+        return_value=context,
+    ):
+        synthesize("Hello", bundle="test-bundle", voice="alba")
+
+    _, kwargs = runtime.synthesize_text.call_args
+    assert kwargs["sentence_split"] == "phrasplit"
+
+
+@pytest.mark.parametrize("sentence_split", ["phrasplit", "none"])
+def test_synthesize_to_wav_delegates_to_synthesize_and_writes_atomically(
+    tmp_path: Path, sentence_split: str
+) -> None:
     destination = tmp_path / "nested" / "speech.wav"
     result = _make_result()
 
@@ -125,6 +143,7 @@ def test_synthesize_to_wav_delegates_to_synthesize_and_writes_atomically(tmp_pat
             bundle="test-bundle",
             voice="alba",
             language="en",
+            sentence_split=sentence_split,
         )
 
     assert output == destination
@@ -134,6 +153,7 @@ def test_synthesize_to_wav_delegates_to_synthesize_and_writes_atomically(tmp_pat
         voice="alba",
         precision="int8",
         language="en",
+        sentence_split=sentence_split,
         temperature=0.7,
         lsd_steps=1,
         max_frames=None,

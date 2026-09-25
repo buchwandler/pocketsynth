@@ -29,6 +29,7 @@ from .errors import (
     VoicePromptError,
 )
 from .runtime import PocketRuntime
+from .text_split import SentenceSplitMode
 from .types import RenderedChunk, RenderedSegment, SynthesisSegment
 from .voice import PreparedVoice
 
@@ -53,6 +54,7 @@ __all__ = [
     "RenderedSegment",
     "RuntimeClosedError",
     "RuntimeDiagnostics",
+    "SentenceSplitMode",
     "SynthesisSegment",
     "SynthesisTiming",
     "UnsupportedBundleError",
