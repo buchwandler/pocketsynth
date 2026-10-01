@@ -35,7 +35,7 @@ The application owns document parsing, SSMD handling, written-to-spoken preparat
 
 ## Compatible OnnxVoice version
 
-PocketSynth requires `onnxvoice>=0.1.12,<0.2`. The CPU and GPU extras use the same supported version range and request OnnxVoice's `pocket` support. OnnxVoice 0.1.12 or newer in this range provides the Pocket runtime and local bundle support used here.
+PocketSynth requires `onnxvoice>=0.1.12,<0.3`. The CPU and GPU extras use the same supported version range and request OnnxVoice's `pocket` support. OnnxVoice 0.1.12 provides the minimum Pocket runtime and local bundle support required here; the integration is also compatible with OnnxVoice 0.2.x.
 
 ## Runtime lifecycle and voices
 

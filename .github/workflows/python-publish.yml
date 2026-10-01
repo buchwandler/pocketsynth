@@ -106,7 +106,7 @@ jobs:
               )
               assert all(
                   any(
-                      spec.operator == "<" and Version(spec.version) <= Version("0.2")
+                      spec.operator == "<" and Version(spec.version) == Version("0.3")
                       for spec in requirement.specifier
                   )
                   for requirement in onnxvoice_requirements

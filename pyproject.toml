@@ -13,7 +13,7 @@ authors = [{name = "Pocketsynth contributors"}]
 dependencies = [
   "numpy>=1.23",
   "sentencepiece>=0.2,<0.3",
-  "onnxvoice>=0.1.12,<0.2",
+  "onnxvoice>=0.1.12,<0.3",
   "phrasplit>=0.3.4,<0.4",
 ]
 keywords = ["tts", "text-to-speech", "pocket-tts", "onnx", "speech", "onnxruntime"]
@@ -30,8 +30,8 @@ classifiers = [
   "Topic :: Multimedia :: Sound/Audio :: Speech",
 ]
 [project.optional-dependencies]
-cpu = ["onnxvoice[cpu,pocket]>=0.1.12,<0.2"]
-gpu = ["onnxvoice[gpu,pocket]>=0.1.12,<0.2"]
+cpu = ["onnxvoice[cpu,pocket]>=0.1.12,<0.3"]
+gpu = ["onnxvoice[gpu,pocket]>=0.1.12,<0.3"]
 playback = ["sounddevice>=0.5,<0.6"]
 dev = [
   "pytest>=8",
