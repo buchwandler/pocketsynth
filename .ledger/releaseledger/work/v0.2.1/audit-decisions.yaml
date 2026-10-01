@@ -1,0 +1,16 @@
+rows:
+  - sha: 210d280ae5c8464038069243595e1ce6e1233e07
+    inspected: true
+    inspected_paths:
+      - .github/workflows/python-publish.yml
+      - .github/workflows/tests.yml
+      - docs/onnxvoice-pocket-support-implementation-brief.md
+      - pyproject.toml
+      - tests/test_package_boundary.py
+    observed_behavior: "Raised the OnnxVoice upper bound from <0.2 to <0.3 across runtime and CPU/GPU extras, documented 0.2.x compatibility, and added CI coverage for OnnxVoice 0.1.12 and 0.2.0 plus publish-workflow metadata checks"
+    public_impact: public
+    decision: accepted
+    target_entry_key: null
+    target_entry_id: null
+    notes: ""
+    stale: false

@@ -1,0 +1,33 @@
+schema_version: 1
+object_type: commit_audit_sheet
+versioning:
+  schema_version: 1
+  revision: 1
+release_version: v0.2.1
+git_base_ref: v0.2.0
+git_base_sha: a0f38cfd4bd1086b6d968230d0d6762e3c2cd57c
+git_head_ref: HEAD
+git_head_sha: 210d280ae5c8464038069243595e1ce6e1233e07
+git_range: a0f38cfd4bd1086b6d968230d0d6762e3c2cd57c..210d280ae5c8464038069243595e1ce6e1233e07
+commit_count: 1
+rows:
+  - sha: 210d280ae5c8464038069243595e1ce6e1233e07
+    source_ref: git:210d280ae5c8464038069243595e1ce6e1233e07
+    short_sha: 210d280
+    changed_paths:
+      - .github/workflows/python-publish.yml
+      - .github/workflows/tests.yml
+      - docs/onnxvoice-pocket-support-implementation-brief.md
+      - pyproject.toml
+      - tests/test_package_boundary.py
+    stats:
+      files_changed: 5
+      insertions: 48
+      deletions: 8
+    inspected: false
+    inspected_paths: []
+    observed_behavior: ""
+    public_impact: unknown
+    decision: needs_review
+    stale: false
+    evidence_subject: "feat: increase onnxvoice dep floor"

@@ -1,0 +1,29 @@
+{
+  "candidate_count": 1,
+  "candidates": [
+    {
+      "additions": 48,
+      "deletions": 8,
+      "patch_file": "210d280.patch",
+      "patch_sha256": "4e5349404842bfff9fa84f3cd110271ea8773bbd2c9ff0769afdb30d60667640",
+      "paths": [
+        ".github/workflows/python-publish.yml",
+        ".github/workflows/tests.yml",
+        "docs/onnxvoice-pocket-support-implementation-brief.md",
+        "pyproject.toml",
+        "tests/test_package_boundary.py"
+      ],
+      "sha": "210d280ae5c8464038069243595e1ce6e1233e07",
+      "short_sha": "210d280",
+      "source_ref": "git:210d280ae5c8464038069243595e1ce6e1233e07"
+    }
+  ],
+  "git_base_ref": "a0f38cfd4bd1086b6d968230d0d6762e3c2cd57c",
+  "git_base_sha": "a0f38cfd4bd1086b6d968230d0d6762e3c2cd57c",
+  "git_head_ref": "210d280ae5c8464038069243595e1ce6e1233e07",
+  "git_head_sha": "210d280ae5c8464038069243595e1ce6e1233e07",
+  "include_merges": "nontrivial",
+  "object_type": "git_evidence_manifest",
+  "release_version": "v0.2.1",
+  "schema_version": 1
+}

@@ -1,0 +1,28 @@
+schema: releaseledger.entry-batch.v1
+operation: create
+schema_version: 1
+object_type: release_entry_batch
+release_version: v0.2.1
+git_base_ref: a0f38cfd4bd1086b6d968230d0d6762e3c2cd57c
+git_base_sha: a0f38cfd4bd1086b6d968230d0d6762e3c2cd57c
+git_head_ref: 210d280ae5c8464038069243595e1ce6e1233e07
+git_head_sha: 210d280ae5c8464038069243595e1ce6e1233e07
+include_merges: nontrivial
+entries:
+  - kind: changed
+    summary: Changed the supported OnnxVoice range to include 0.2.x releases
+    status: accepted
+    source_refs:
+      - git:210d280ae5c8464038069243595e1ce6e1233e07
+    paths:
+      - .github/workflows/python-publish.yml
+      - .github/workflows/tests.yml
+      - docs/onnxvoice-pocket-support-implementation-brief.md
+      - pyproject.toml
+      - tests/test_package_boundary.py
+    sources:
+      - git:210d280ae5c8464038069243595e1ce6e1233e07
+    prs: []
+    issues: []
+    contributors:
+      - "@holgern"

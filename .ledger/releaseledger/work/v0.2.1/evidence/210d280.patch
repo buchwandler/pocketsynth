@@ -1,0 +1,122 @@
+ .github/workflows/python-publish.yml               |  2 +-
+ .github/workflows/tests.yml                        | 20 +++++++++++++++++
+ ...nnxvoice-pocket-support-implementation-brief.md |  2 +-
+ pyproject.toml                                     |  6 ++---
+ tests/test_package_boundary.py                     | 26 +++++++++++++++++++---
+ 5 files changed, 48 insertions(+), 8 deletions(-)
+
+diff --git a/.github/workflows/python-publish.yml b/.github/workflows/python-publish.yml
+index f7b0188..ab2e50d 100644
+--- a/.github/workflows/python-publish.yml
++++ b/.github/workflows/python-publish.yml
+@@ -106,7 +106,7 @@ jobs:
+               )
+               assert all(
+                   any(
+-                      spec.operator == "<" and Version(spec.version) <= Version("0.2")
++                      spec.operator == "<" and Version(spec.version) == Version("0.3")
+                       for spec in requirement.specifier
+                   )
+                   for requirement in onnxvoice_requirements
+diff --git a/.github/workflows/tests.yml b/.github/workflows/tests.yml
+index 781b832..94d6efd 100644
+--- a/.github/workflows/tests.yml
++++ b/.github/workflows/tests.yml
+@@ -26,3 +26,23 @@ jobs:
+       run: python -m mypy --config-file pyproject.toml pocketsynth
+     - name: Tests
+       run: pytest
++  onnxvoice-compatibility:
++    runs-on: ubuntu-latest
++    strategy:
++      matrix:
++        onnxvoice-version: ["0.1.12", "0.2.0"]
++    steps:
++    - uses: actions/checkout@v4
++    - name: Setup Python
++      uses: actions/setup-python@v5
++      with:
++        python-version: "3.13"
++    - name: Install packages with pinned OnnxVoice
++      run: python -m pip install -e ".[dev]" "onnxvoice[cpu,pocket]==${{ matrix.onnxvoice-version }}"
++    - name: Test OnnxVoice compatibility
++      run: >-
++        python -m pytest -q
++        tests/test_onnxvoice_boundary.py
++        tests/test_package_boundary.py
++        tests/test_runtime_synthesis.py
++        tests/test_voice.py
+diff --git a/docs/onnxvoice-pocket-support-implementation-brief.md b/docs/onnxvoice-pocket-support-implementation-brief.md
+index 867f9fc..423fe10 100644
+--- a/docs/onnxvoice-pocket-support-implementation-brief.md
++++ b/docs/onnxvoice-pocket-support-implementation-brief.md
+@@ -35,7 +35,7 @@ The application owns document parsing, SSMD handling, written-to-spoken preparat
+
+ ## Compatible OnnxVoice version
+
+-PocketSynth requires `onnxvoice>=0.1.12,<0.2`. The CPU and GPU extras use the same supported version range and request OnnxVoice's `pocket` support. OnnxVoice 0.1.12 or newer in this range provides the Pocket runtime and local bundle support used here.
++PocketSynth requires `onnxvoice>=0.1.12,<0.3`. The CPU and GPU extras use the same supported version range and request OnnxVoice's `pocket` support. OnnxVoice 0.1.12 provides the minimum Pocket runtime and local bundle support required here; the integration is also compatible with OnnxVoice 0.2.x.
+
+ ## Runtime lifecycle and voices
+
+diff --git a/pyproject.toml b/pyproject.toml
+index 8cd952a..32fdd07 100644
+--- a/pyproject.toml
++++ b/pyproject.toml
+@@ -13,7 +13,7 @@ authors = [{name = "Pocketsynth contributors"}]
+ dependencies = [
+   "numpy>=1.23",
+   "sentencepiece>=0.2,<0.3",
+-  "onnxvoice>=0.1.12,<0.2",
++  "onnxvoice>=0.1.12,<0.3",
+   "phrasplit>=0.3.4,<0.4",
+ ]
+ keywords = ["tts", "text-to-speech", "pocket-tts", "onnx", "speech", "onnxruntime"]
+@@ -30,8 +30,8 @@ classifiers = [
+   "Topic :: Multimedia :: Sound/Audio :: Speech",
+ ]
+ [project.optional-dependencies]
+-cpu = ["onnxvoice[cpu,pocket]>=0.1.12,<0.2"]
+-gpu = ["onnxvoice[gpu,pocket]>=0.1.12,<0.2"]
++cpu = ["onnxvoice[cpu,pocket]>=0.1.12,<0.3"]
++gpu = ["onnxvoice[gpu,pocket]>=0.1.12,<0.3"]
+ playback = ["sounddevice>=0.5,<0.6"]
+ dev = [
+   "pytest>=8",
+diff --git a/tests/test_package_boundary.py b/tests/test_package_boundary.py
+index 072d456..cba9299 100644
+--- a/tests/test_package_boundary.py
++++ b/tests/test_package_boundary.py
+@@ -88,9 +88,29 @@ def test_runtime_package_has_no_removed_architecture_terminology() -> None:
+ def test_project_metadata_has_only_supported_engine_dependencies() -> None:
+     metadata = (ROOT / "pyproject.toml").read_text(encoding="utf-8").casefold()
+     assert all(name not in metadata for name in FORBIDDEN_IMPORTS)
+-    assert '"onnxvoice>=0.1.12,<0.2"' in metadata
+-    assert '"onnxvoice[cpu,pocket]>=0.1.12,<0.2"' in metadata
+-    assert '"onnxvoice[gpu,pocket]>=0.1.12,<0.2"' in metadata
++    assert '"onnxvoice>=0.1.12,<0.3"' in metadata
++    assert '"onnxvoice[cpu,pocket]>=0.1.12,<0.3"' in metadata
++    assert '"onnxvoice[gpu,pocket]>=0.1.12,<0.3"' in metadata
+     onnxvoice_minimums = re.findall(r'"onnxvoice(?:\[[^]]+\])?>=([^,<"]+)', metadata)
+     assert onnxvoice_minimums
+     assert set(onnxvoice_minimums) == {_ONNXVOICE_MINIMUM_VERSION}
++
++
++def test_onnxvoice_compatibility_workflow_covers_supported_versions() -> None:
++    workflow = (ROOT / ".github" / "workflows" / "tests.yml").read_text(encoding="utf-8")
++
++    assert 'onnxvoice-version: ["0.1.12", "0.2.0"]' in workflow
++    for test_file in (
++        "tests/test_onnxvoice_boundary.py",
++        "tests/test_package_boundary.py",
++        "tests/test_runtime_synthesis.py",
++        "tests/test_voice.py",
++    ):
++        assert test_file in workflow
++
++
++def test_publish_workflow_requires_supported_onnxvoice_window() -> None:
++    workflow = (ROOT / ".github" / "workflows" / "python-publish.yml").read_text(encoding="utf-8")
++
++    assert 'has_minimum([requirement], "onnxvoice", "0.1.12")' in workflow
++    assert 'spec.operator == "<" and Version(spec.version) == Version("0.3")' in workflow
