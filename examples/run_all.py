@@ -16,6 +16,7 @@ _ARTEFACT_DIR = _PROJECT_ROOT / "example-artefacts"
 
 EXAMPLES = (
     ("predefined_voice.py", "managed"),
+    ("kyutai_voice.py", "managed"),
     ("quickstart.py", "managed"),
     ("local_bundle.py", "local"),
     ("basic.py", "managed"),
@@ -48,7 +49,9 @@ def _run_example(name: str, *, env: dict[str, str]) -> Path:
     output_dir = _ARTEFACT_DIR / f"examples__{name.replace('.py', '')}"
     output_dir.mkdir(parents=True, exist_ok=True)
     command = [sys.executable, str(script)]
-    if name == "quickstart.py":
+    if name == "kyutai_voice.py":
+        command.extend(["--output", str(output_dir / "kyutai_casual.wav")])
+    elif name == "quickstart.py":
         command.extend(
             [
                 "--voice",
@@ -125,14 +128,18 @@ def main(argv: list[str] | None = None) -> int:
         runnable.append(example)
 
     if runnable and not voice:
-        predefined = [example for example in runnable if example[0] == "predefined_voice.py"]
-        if predefined:
+        standalone = [
+            example
+            for example in runnable
+            if example[0] in {"predefined_voice.py", "kyutai_voice.py"}
+        ]
+        if standalone:
             for name, _kind in runnable:
-                if name != "predefined_voice.py":
+                if (name, _kind) not in standalone:
                     print(f"SKIP {name} (POCKETSYNTH_EXAMPLE_VOICE not set)")
-            runnable = predefined
+            runnable = standalone
         else:
-            print("ERROR: Set POCKETSYNTH_EXAMPLE_VOICE to a mono 16-bit PCM reference WAV.")
+            print("ERROR: Set POCKETSYNTH_EXAMPLE_VOICE to a supported PCM WAV reference prompt.")
             return 1
     if not runnable:
         print("No examples to run. Configure a local bundle or pass --include-network.")

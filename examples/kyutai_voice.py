@@ -1,0 +1,44 @@
+"""Synthesize with a cataloged Kyutai reference prompt, without manual downloading."""
+
+from __future__ import annotations
+
+import argparse
+import os
+from pathlib import Path
+
+from pocketsynth import PocketRuntime
+
+DEFAULT_BUNDLE = os.environ.get("POCKETSYNTH_EXAMPLE_BUNDLE", "english_2026-04")
+DEFAULT_REF = "kyutai-tts-voices:alba-mackenna/casual"
+TEXT = "Hello, this voice was cloned from a managed Kyutai reference recording."
+
+
+def main(argv: list[str] | None = None) -> int:
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("--bundle", default=DEFAULT_BUNDLE)
+    parser.add_argument(
+        "--voice", default=DEFAULT_REF, help=f"managed reference (default: {DEFAULT_REF})"
+    )
+    parser.add_argument("--text", default=TEXT)
+    parser.add_argument("--output", type=Path, default=Path("kyutai_casual.wav"))
+    parser.add_argument("--cache-dir", type=Path)
+    parser.add_argument(
+        "--offline",
+        action="store_true",
+        default=os.environ.get("POCKETSYNTH_EXAMPLE_OFFLINE") == "1",
+        help="use cached bundle and reference assets only",
+    )
+    args = parser.parse_args(argv)
+
+    with PocketRuntime.from_pretrained(
+        args.bundle, cache_dir=args.cache_dir, offline=args.offline
+    ) as runtime:
+        voice = runtime.prepare_voice(args.voice)
+        audio = runtime.synthesize_text(args.text, voice=voice)
+        audio.save_wav(args.output)
+    print(f"WAV: {args.output}")
+    return 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

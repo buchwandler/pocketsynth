@@ -19,6 +19,8 @@ python -m pip install 'pocketsynth[cpu]'
 
 The `gpu` extra selects OnnxVoice's GPU runtime. `playback` adds `sounddevice` for `RenderedSegment.play()`.
 
+Managed Kyutai prompt support uses the OnnxVoice 0.2.2 prompt catalog and cache API; the package dependency installs this minimum automatically.
+
 ## Direct engine use
 
 Use `PocketRuntime` for a reusable local or managed bundle session. Prepare a voice once and reuse it across independent requests:
@@ -78,9 +80,22 @@ An explicit request language is a compatibility assertion against the active bun
 
 ## Voices
 
-Pocket bundles and voice conditioning are separate. `prepare_voice()` accepts bundle-declared predefined names, mono PCM16 WAV paths, `Path` objects, in-memory `(audio, sample_rate)` tuples, and existing `PreparedVoice` objects. Reference audio is validated and resampled to the bundle rate before OnnxVoice encodes it.
+Pocket bundles and voice conditioning are separate. `prepare_voice()` accepts bundle-declared predefined names, local PCM WAV paths, `Path` objects, in-memory `(audio, sample_rate)` tuples, existing `PreparedVoice` objects, and managed `kyutai-tts-voices:<id>` references. Reference WAVs support uncompressed PCM 8-, 16-, 24-, and 32-bit mono or multichannel audio; multichannel input is downmixed and audio is resampled to the bundle rate before OnnxVoice encodes it.
 
-`PreparedVoice` can be reused for many requests on a compatible runtime. Its fingerprint identifies canonical resampled reference audio or the bundle and predefined voice name. OnnxVoice remains responsible for voice-state assets, downloads, authentication, and cache integrity. Some predefined voice assets require accepting upstream access terms and authenticating with Hugging Face before online use.
+`PreparedVoice` can be reused for many requests on a compatible runtime. A reference voice's fingerprint identifies normalized audio and sample rate, while its metadata retains managed source provenance and license. OnnxVoice 0.2.2 owns Kyutai prompt discovery, pinned downloads, cache integrity, and offline behavior. PocketSynth does not download prompt assets itself. Predefined voice states remain separate assets and may require accepting upstream access terms and authenticating with Hugging Face.
+
+Managed references are resolved and cached by OnnxVoice, so no WAV download step is needed:
+
+```python
+from pocketsynth import PocketRuntime
+
+with PocketRuntime.from_pretrained("english_2026-04") as runtime:
+    voice = runtime.prepare_voice("kyutai-tts-voices:alba-mackenna/casual")
+    result = runtime.synthesize_text("Hello from a managed Kyutai voice.", voice=voice)
+    result.save_wav("kyutai-casual.wav")
+```
+
+Discover prompts without downloading their audio with `runtime.list_voice_prompts()` or `pocketsynth voices list`. The CLI supports `--dataset`, `--variant`, `--license`, and `--offline` filters.
 
 To inspect dependencies, providers, bundle metadata, and voice format:
 
@@ -99,6 +114,22 @@ pocketsynth synthesize \
   --voice alba \
   --output hello.wav \
   "Hello from Pocket."
+```
+
+Managed Kyutai reference:
+
+```bash
+pocketsynth synthesize \
+  --bundle english_2026-04 \
+  --voice kyutai-tts-voices:alba-mackenna/casual \
+  --output kyutai-casual.wav \
+  "Hello from PocketSynth."
+```
+
+After the bundle and prompt are cached, pass `--offline` to use them without network access. List available catalog prompts without downloading WAVs:
+
+```bash
+pocketsynth voices list --dataset alba-mackenna
 ```
 
 Local bundle:
@@ -157,7 +188,7 @@ python examples/run_all.py --include-network
 python examples/run_all.py --include-network --offline
 ```
 
-Set `POCKETSYNTH_EXAMPLE_VOICE` for reference-WAV examples and `POCKETSYNTH_EXAMPLE_BUNDLE_DIR` for local examples.
+`examples/kyutai_voice.py` uses a managed catalog reference and needs no local WAV or `POCKETSYNTH_EXAMPLE_VOICE`. Set `POCKETSYNTH_EXAMPLE_VOICE` for local reference-WAV examples and `POCKETSYNTH_EXAMPLE_BUNDLE_DIR` for local bundles. `examples/clone_all_kyutai_voices.py` discovers and renders all cataloged WAV prompts; see the examples guide for filters and dry-run usage.
 
 Run project checks with:
 
@@ -168,4 +199,4 @@ python -m mypy --config-file pyproject.toml pocketsynth
 python -m compileall -q pocketsynth tests examples
 ```
 
-Real model tests are environment-gated. Set `POCKETSYNTH_TEST_BUNDLE_DIR` and `POCKETSYNTH_TEST_VOICE_WAV` to run the local integration tests. Managed tests may require network access and accepted upstream voice-asset terms.
+Real model tests are environment-gated. Set `POCKETSYNTH_TEST_BUNDLE_DIR` and `POCKETSYNTH_TEST_VOICE_WAV` to run the local integration tests. To opt into one pinned Kyutai prompt download and synthesis followed by offline cache reuse, set `POCKETSYNTH_TEST_MANAGED_PROMPT=1`; the test uses `english_2026-04` unless `POCKETSYNTH_TEST_BUNDLE` overrides it. It does not synthesize the full catalog. Managed tests may require network access and accepted upstream voice-asset terms.

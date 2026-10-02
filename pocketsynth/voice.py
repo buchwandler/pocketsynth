@@ -2,12 +2,14 @@ from __future__ import annotations
 
 import hashlib
 import wave
+from collections.abc import Callable
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 
 import numpy as np
 
+from ._onnxvoice import ResolvedVoicePrompt
 from .audio import as_float32_mono
 from .errors import VoicePromptError
 
@@ -82,16 +84,33 @@ def _read_pcm_wav(path: str | Path) -> tuple[np.ndarray, int]:
             frames = handle.readframes(handle.getnframes())
     except (OSError, EOFError, TypeError, ValueError, wave.Error) as exc:
         raise VoicePromptError(
-            f"Expected mono PCM WAV voice prompt; could not read {path!s}: {exc}"
+            f"Expected uncompressed PCM WAV voice prompt; could not read {path!s}: {exc}"
         ) from exc
-    if channels != 1 or width != 2 or compression != "NONE" or sample_rate <= 0:
+    if channels < 1 or width not in (1, 2, 3, 4) or compression != "NONE" or sample_rate <= 0:
         raise VoicePromptError(
-            "Expected mono PCM WAV voice prompt; "
+            "Expected uncompressed PCM WAV voice prompt with 1-, 2-, 3-, or 4-byte samples; "
             f"actual channels={channels}, sample width={width} bytes, "
             f"sample rate={sample_rate} Hz, compression={compression!r}"
         )
-    audio = np.frombuffer(frames, dtype="<i2").astype(np.float32) / 32768.0
-    return audio, sample_rate
+    if not frames:
+        raise VoicePromptError("WAV voice prompt contains no audio frames")
+    sample_count = len(frames) // width
+    if sample_count * width != len(frames) or sample_count % channels:
+        raise VoicePromptError("WAV voice prompt contains an incomplete PCM frame")
+    if width == 1:
+        samples = (np.frombuffer(frames, dtype=np.uint8).astype(np.float32) - 128.0) / 128.0
+    elif width == 2:
+        samples = np.frombuffer(frames, dtype="<i2").astype(np.float32) / 32768.0
+    elif width == 3:
+        packed = np.frombuffer(frames, dtype=np.uint8).reshape(-1, 3).astype(np.int32)
+        signed = packed[:, 0] | (packed[:, 1] << 8) | (packed[:, 2] << 16)
+        signed[signed >= 0x800000] -= 0x1000000
+        samples = signed.astype(np.float32) / 8388608.0
+    else:
+        samples = np.frombuffer(frames, dtype="<i4").astype(np.float32) / 2147483648.0
+    channels_audio = samples.reshape(-1, channels)
+    audio = channels_audio.mean(axis=1, dtype=np.float32) if channels > 1 else channels_audio[:, 0]
+    return as_float32_mono(audio), sample_rate
 
 
 def _resample_linear(audio: np.ndarray, source_rate: int, target_rate: int) -> np.ndarray:
@@ -104,9 +123,18 @@ def _resample_linear(audio: np.ndarray, source_rate: int, target_rate: int) -> n
     return np.interp(new_x, old_x, audio).astype(np.float32)
 
 
+def load_reference_audio(path: str | Path, *, target_sample_rate: int) -> np.ndarray:
+    audio, source_rate = _read_pcm_wav(path)
+    return _resample_linear(audio, source_rate, target_sample_rate)
+
+
 def _looks_like_path_string(value: str) -> bool:
     path = Path(value)
     return bool(path.suffix) or "/" in value or "\\" in value or path.exists()
+
+
+def _is_managed_voice_prompt_ref(value: str) -> bool:
+    return value.startswith("kyutai-tts-voices:")
 
 
 def _reference_fingerprint(audio: np.ndarray, sample_rate: int) -> str:
@@ -133,9 +161,11 @@ def prepare_voice(
     bundle_id: str | None = None,
     source_revision: str | None = None,
     predefined_voices: tuple[str, ...] = (),
+    managed_voice_resolver: Callable[[str], ResolvedVoicePrompt] | None = None,
 ) -> PreparedVoice:
     if isinstance(source, PreparedVoice):
         return source
+    metadata: dict[str, Any] = {"kind": "reference"}
     if isinstance(source, tuple):
         audio, source_rate = source
         label = None
@@ -160,13 +190,33 @@ def prepare_voice(
             fingerprint=_predefined_fingerprint(bundle_id, source, source_revision),
             source_revision=source_revision,
         )
+    elif isinstance(source, str) and _is_managed_voice_prompt_ref(source):
+        if managed_voice_resolver is None:
+            raise VoicePromptError("Managed voice prompts require a configured OnnxVoice resolver")
+        prompt = managed_voice_resolver(source)
+        audio = load_reference_audio(prompt.path, target_sample_rate=sample_rate)
+        source_rate = sample_rate
+        label = source
+        metadata.update(
+            {
+                "managed_ref": prompt.ref,
+                "source_repository": prompt.source_repository,
+                "source_revision": prompt.source_revision,
+                "source_path": prompt.source_path,
+                "source_sha256": prompt.sha256,
+                "license": prompt.license,
+                "dataset": prompt.dataset,
+                "variant": prompt.variant,
+            }
+        )
     elif isinstance(source, str) and not _looks_like_path_string(source):
         names = ", ".join(predefined_voices) or "none"
         raise VoicePromptError(
             f"Unknown predefined Pocket voice {source!r}. Available voices: {names}."
         )
     else:
-        audio, source_rate = _read_pcm_wav(source)
+        audio = load_reference_audio(source, target_sample_rate=sample_rate)
+        source_rate = sample_rate
         label = str(source)
     audio = _resample_linear(audio, int(source_rate), sample_rate)
     method = getattr(runtime, "prepare_voice", None)
@@ -181,7 +231,7 @@ def prepare_voice(
         source=label,
         bundle_id=bundle_id,
         runtime_fingerprint=bundle_id,
-        metadata={"kind": "reference"},
+        metadata=metadata,
         fingerprint=_reference_fingerprint(audio, sample_rate),
         source_revision=source_revision,
     )

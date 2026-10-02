@@ -10,12 +10,15 @@ import numpy as np
 
 from ._onnxvoice import (
     ResolvedPocketBundle,
+    ResolvedVoicePrompt,
     _call,
     install_pretrained_bundle,
     open_installed_bundle,
     open_local_bundle,
+    resolve_voice_prompt,
     runtime_diagnostics,
 )
+from ._onnxvoice import list_voice_prompts as list_pocket_voice_prompts
 from .asset_progress import AssetProgressCallback
 from .bundle import BundleMetadata, BundlePaths, Precision
 from .config import GenerationConfig
@@ -59,6 +62,9 @@ class PocketRuntime:
         bundle_id: str | None = None,
         precision: str | None = None,
         source_revision: str | None = None,
+        cache_dir: str | Path | None = None,
+        offline: bool = False,
+        progress: AssetProgressCallback | None = None,
     ) -> None:
         self.paths = paths
         self.metadata = metadata
@@ -67,6 +73,9 @@ class PocketRuntime:
         self.bundle_id = bundle_id or metadata.bundle_name
         self.precision = precision
         self.source_revision = source_revision
+        self._cache_dir = cache_dir
+        self._offline = offline
+        self._progress = progress
         self.frontend = PocketFrontend(tokenizer_path, metadata)
         self._closed = False
 
@@ -126,6 +135,7 @@ class PocketRuntime:
             session_options=session_options,
             cache_dir=cache_dir,
             offline=bool(offline),
+            progress=progress,
         )
 
     @classmethod
@@ -138,6 +148,7 @@ class PocketRuntime:
         session_options: Any | None = None,
         cache_dir: str | Path | None = None,
         offline: bool = False,
+        progress: AssetProgressCallback | None = None,
     ) -> PocketRuntime:  # noqa: UP037
         metadata = BundleMetadata.load(resolved.metadata_path)
         raw_voice_names = resolved.metadata.get("predefined_voice_names")
@@ -177,11 +188,31 @@ class PocketRuntime:
             bundle_id=resolved.bundle_id,
             precision=resolved.precision,
             source_revision=resolved.source_revision,
+            cache_dir=cache_dir,
+            offline=offline,
+            progress=progress,
         )
 
     @property
     def predefined_voices(self) -> tuple[str, ...]:
         return self.metadata.predefined_voices
+
+    def list_voice_prompts(
+        self,
+        *,
+        dataset: str | None = None,
+        variant: str | None = None,
+        license: str | None = None,
+    ) -> tuple[Any, ...]:
+        self._ensure_open()
+        return list_pocket_voice_prompts(
+            cache_dir=self._cache_dir,
+            offline=self._offline,
+            dataset=dataset,
+            variant=variant,
+            license=license,
+            progress=self._progress,
+        )
 
     @property
     def bundle_language(self) -> str:
@@ -202,6 +233,14 @@ class PocketRuntime:
     def sample_rate(self) -> int:
         return self.metadata.sample_rate
 
+    def _resolve_voice_prompt(self, ref: str) -> ResolvedVoicePrompt:
+        return resolve_voice_prompt(
+            ref,
+            cache_dir=self._cache_dir,
+            offline=self._offline,
+            progress=self._progress,
+        )
+
     def prepare_voice(self, source: Any) -> PreparedVoice:
         self._ensure_open()
 
@@ -213,6 +252,7 @@ class PocketRuntime:
                 bundle_id=self.bundle_id,
                 source_revision=self.source_revision,
                 predefined_voices=self.predefined_voices,
+                managed_voice_resolver=self._resolve_voice_prompt,
             )
 
         if isinstance(source, str) and source in self.predefined_voices:

@@ -51,3 +51,21 @@ def test_managed_english_bundle_produces_wav(tmp_path: Path) -> None:
     cached_rate = _render(bundle, voice, cache_dir, cached, offline=True)
     assert cached_rate == sample_rate
     _assert_wav(cached, sample_rate=sample_rate)
+
+
+def test_pinned_kyutai_prompt_synthesizes_online_and_offline(tmp_path: Path) -> None:
+    if os.environ.get("POCKETSYNTH_TEST_MANAGED_PROMPT") != "1":
+        pytest.skip("set POCKETSYNTH_TEST_MANAGED_PROMPT=1 to opt into managed prompt downloads")
+
+    bundle = os.environ.get("POCKETSYNTH_TEST_BUNDLE", "english_2026-04")
+    voice = "kyutai-tts-voices:alba-mackenna/casual"
+    cache_dir = tmp_path / "cache"
+
+    first = tmp_path / "managed-prompt.wav"
+    sample_rate = _render(bundle, voice, cache_dir, first, offline=False)
+    _assert_wav(first, sample_rate=sample_rate)
+
+    cached = tmp_path / "managed-prompt-offline.wav"
+    cached_rate = _render(bundle, voice, cache_dir, cached, offline=True)
+    assert cached_rate == sample_rate
+    _assert_wav(cached, sample_rate=sample_rate)

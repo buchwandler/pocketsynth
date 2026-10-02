@@ -88,9 +88,9 @@ def test_runtime_package_has_no_removed_architecture_terminology() -> None:
 def test_project_metadata_has_only_supported_engine_dependencies() -> None:
     metadata = (ROOT / "pyproject.toml").read_text(encoding="utf-8").casefold()
     assert all(name not in metadata for name in FORBIDDEN_IMPORTS)
-    assert '"onnxvoice>=0.1.12,<0.3"' in metadata
-    assert '"onnxvoice[cpu,pocket]>=0.1.12,<0.3"' in metadata
-    assert '"onnxvoice[gpu,pocket]>=0.1.12,<0.3"' in metadata
+    assert '"onnxvoice>=0.2.2,<0.3"' in metadata
+    assert '"onnxvoice[cpu,pocket]>=0.2.2,<0.3"' in metadata
+    assert '"onnxvoice[gpu,pocket]>=0.2.2,<0.3"' in metadata
     onnxvoice_minimums = re.findall(r'"onnxvoice(?:\[[^]]+\])?>=([^,<"]+)', metadata)
     assert onnxvoice_minimums
     assert set(onnxvoice_minimums) == {_ONNXVOICE_MINIMUM_VERSION}
@@ -99,7 +99,7 @@ def test_project_metadata_has_only_supported_engine_dependencies() -> None:
 def test_onnxvoice_compatibility_workflow_covers_supported_versions() -> None:
     workflow = (ROOT / ".github" / "workflows" / "tests.yml").read_text(encoding="utf-8")
 
-    assert 'onnxvoice-version: ["0.1.12", "0.2.0"]' in workflow
+    assert 'onnxvoice-version: ["0.2.2"]' in workflow
     for test_file in (
         "tests/test_onnxvoice_boundary.py",
         "tests/test_package_boundary.py",
@@ -112,5 +112,5 @@ def test_onnxvoice_compatibility_workflow_covers_supported_versions() -> None:
 def test_publish_workflow_requires_supported_onnxvoice_window() -> None:
     workflow = (ROOT / ".github" / "workflows" / "python-publish.yml").read_text(encoding="utf-8")
 
-    assert 'has_minimum([requirement], "onnxvoice", "0.1.12")' in workflow
+    assert 'has_minimum([requirement], "onnxvoice", "0.2.2")' in workflow
     assert 'spec.operator == "<" and Version(spec.version) == Version("0.3")' in workflow

@@ -1,16 +1,19 @@
 from __future__ import annotations
 
 import argparse
+import sys
 from importlib import import_module
 from pathlib import Path
 from typing import Any
 
 from . import PocketRuntime, __version__
+from ._onnxvoice import list_voice_prompts as query_voice_prompts
 from ._onnxvoice import normalize_pocket_ref
 from .bundle import BundlePaths
 from .config import GenerationConfig
 from .convenience import synthesize_with_runtime
-from .voice import _looks_like_path_string, _read_pcm_wav
+from .errors import PocketSynthError
+from .voice import _is_managed_voice_prompt_ref, _looks_like_path_string, _read_pcm_wav
 
 
 def _providers(values: list[str] | None) -> str | list[str] | None:
@@ -47,25 +50,51 @@ def _synthesize(args: argparse.Namespace) -> int:
             refresh_catalog=args.refresh_catalog,
             force_download=args.force_download,
         )
-        runtime = PocketRuntime.from_pretrained(args.bundle, **runtime_options)
-        bundle_label = args.bundle
-    else:
-        runtime = PocketRuntime.load(args.bundle_dir, **runtime_options)
-        bundle_label = str(args.bundle_dir)
-    with runtime as active_runtime:
-        result = synthesize_with_runtime(
-            active_runtime,
-            args.text,
-            voice=args.voice,
-            generation=generation,
-            sentence_split=args.sentence_split,
-        )
-        result.save_wav(args.output)
+    try:
+        if args.bundle:
+            runtime = PocketRuntime.from_pretrained(args.bundle, **runtime_options)
+            bundle_label = args.bundle
+        else:
+            runtime = PocketRuntime.load(args.bundle_dir, **runtime_options)
+            bundle_label = str(args.bundle_dir)
+        with runtime as active_runtime:
+            result = synthesize_with_runtime(
+                active_runtime,
+                args.text,
+                voice=args.voice,
+                generation=generation,
+                sentence_split=args.sentence_split,
+            )
+            result.save_wav(args.output)
+    except PocketSynthError as exc:
+        print(f"FAIL synthesis: {exc}", file=sys.stderr)
+        return 1
     print(f"Output: {args.output}")
     print(f"Bundle: {bundle_label}")
     print(f"Precision: {args.precision}")
     print(f"Sample rate: {result.sample_rate} Hz")
     print(f"Duration: {result.duration_seconds:.3f} s")
+    return 0
+
+
+def _voices_list(args: argparse.Namespace) -> int:
+    try:
+        prompts = query_voice_prompts(
+            cache_dir=args.cache_dir,
+            offline=args.offline,
+            dataset=args.dataset,
+            variant=args.variant,
+            license=args.license,
+        )
+    except Exception as exc:
+        print(f"FAIL voice prompt catalog: {exc}", file=sys.stderr)
+        return 1
+    print("REF\tDATASET\tVARIANT\tLICENSE\tSOURCE_PATH")
+    for prompt in prompts:
+        print(
+            f"{prompt.ref}\t{prompt.dataset}\t{prompt.variant}\t"
+            f"{prompt.license}\t{prompt.source_path}"
+        )
     return 0
 
 
@@ -122,12 +151,23 @@ def _check(args: argparse.Namespace) -> int:
         print("Bundle: not checked (pass --bundle or --bundle-dir)")
 
     if args.voice:
-        if available_voices is not None and args.voice in available_voices:
+        if _is_managed_voice_prompt_ref(args.voice):
+            try:
+                prompts = query_voice_prompts(cache_dir=args.cache_dir, offline=args.offline)
+                if any(prompt.ref == args.voice for prompt in prompts):
+                    print(f"Managed voice prompt: OK ({args.voice})")
+                else:
+                    print(f"FAIL unknown managed voice prompt {args.voice!r}")
+                    failures += 1
+            except Exception as exc:
+                print(f"FAIL managed voice prompt {args.voice!r}: {exc}")
+                failures += 1
+        elif available_voices is not None and args.voice in available_voices:
             print(f"Predefined voice: OK ({args.voice})")
         elif _looks_like_path_string(args.voice):
             try:
                 _, sample_rate = _read_pcm_wav(args.voice)
-                print(f"Voice WAV: OK (mono PCM16, sample rate {sample_rate})")
+                print(f"Voice WAV: OK (sample rate {sample_rate} Hz)")
             except Exception as exc:
                 print(f"FAIL voice WAV: {exc}")
                 failures += 1
@@ -171,7 +211,9 @@ def main(argv: list[str] | None = None) -> int:
         ),
     )
     synth.add_argument(
-        "--voice", required=True, help="bundle-declared voice name or local mono PCM16 WAV path"
+        "--voice",
+        required=True,
+        help="bundle-declared voice name, kyutai-tts-voices:<id>, or local WAV path",
     )
     synth.add_argument("--output", type=Path, required=True)
     synth.add_argument("--cache-dir", type=Path)
@@ -180,23 +222,34 @@ def main(argv: list[str] | None = None) -> int:
     synth.add_argument("--force-download", action="store_true")
     synth.add_argument("text")
 
-    check = sub.add_parser(
-        "check", help="check dependencies, providers, bundles, predefined voices, and WAVs"
-    )
+    check = sub.add_parser("check", help="check dependencies, providers, bundles, and voice inputs")
     check_source = check.add_mutually_exclusive_group()
     check_source.add_argument("--bundle")
     check_source.add_argument("--bundle-dir", type=Path)
-    check.add_argument("--voice", help="bundle-declared voice name or local mono PCM16 WAV path")
+    check.add_argument("--voice", help="predefined name, kyutai-tts-voices:<id>, or local WAV path")
     check.add_argument("--precision", choices=("int8", "fp32"), default="int8")
     check.add_argument("--cache-dir", type=Path)
     check.add_argument("--offline", action="store_true")
     check.add_argument("--provider", action="append", dest="providers")
+
+    voices = sub.add_parser("voices", help="discover managed voice prompts")
+    voices_sub = voices.add_subparsers(dest="voices_command", required=True)
+    voices_list = voices_sub.add_parser(
+        "list", help="list cataloged prompts without downloading audio"
+    )
+    voices_list.add_argument("--cache-dir", type=Path)
+    voices_list.add_argument("--offline", action="store_true")
+    voices_list.add_argument("--dataset")
+    voices_list.add_argument("--variant")
+    voices_list.add_argument("--license")
 
     args = parser.parse_args(argv)
     if args.command == "synthesize":
         return _synthesize(args)
     if args.command == "check":
         return _check(args)
+    if args.command == "voices":
+        return _voices_list(args)
     return 2
 
 

@@ -10,7 +10,7 @@ Install the Pocket-capable runtime:
 python -m pip install -e '.[cpu]'
 ```
 
-`predefined_voice.py` uses the bundle-declared voice `alba` and does not need a reference WAV. Other examples that use a prompt voice require a mono, 16-bit PCM reference WAV:
+`predefined_voice.py` uses the bundle-declared voice `alba` and does not need a reference WAV. `kyutai_voice.py` uses a managed catalog prompt and also needs no local WAV. Examples that use a local prompt accept uncompressed PCM WAV at 8, 16, 24, or 32 bits, with mono or multichannel input (multichannel audio is downmixed):
 
 ```bash
 export POCKETSYNTH_EXAMPLE_VOICE=/path/to/reference.wav
@@ -29,6 +29,46 @@ python examples/predefined_voice.py
 ```
 
 The script writes `example-artefacts/predefined_voice_alba.wav`. The bundle's `predefined_voice_names` declares compatibility only. Voice-state assets are separate, may require accepted Hugging Face access terms and authentication, and are resolved and cached by OnnxVoice. After the bundle and voice state are cached, rerun with `POCKETSYNTH_EXAMPLE_OFFLINE=1` to avoid network access.
+
+## Managed Kyutai reference voices
+
+`kyutai_voice.py` clones a pinned Kyutai reference without a manual WAV download:
+
+```bash
+python examples/kyutai_voice.py
+```
+
+It defaults to `kyutai-tts-voices:alba-mackenna/casual`. After its bundle and prompt are cached, run with `--offline` to reuse them without network access. The CLI accepts the same managed reference:
+
+```bash
+pocketsynth synthesize \
+  --bundle english_2026-04 \
+  --voice kyutai-tts-voices:alba-mackenna/casual \
+  --output kyutai-casual.wav \
+  "Hello from PocketSynth."
+
+pocketsynth synthesize --offline \
+  --bundle english_2026-04 \
+  --voice kyutai-tts-voices:alba-mackenna/casual \
+  --output kyutai-casual-offline.wav \
+  "This prompt is loaded from cache."
+```
+
+List catalog metadata without downloading prompt WAVs:
+
+```bash
+pocketsynth voices list --dataset alba-mackenna
+```
+
+`clone_all_kyutai_voices.py` discovers every cataloged prompt by default, continues after per-prompt failures, and writes `manifest.csv` in the output directory:
+
+```bash
+python examples/clone_all_kyutai_voices.py \
+  --bundle english_2026-04 \
+  --output-dir output/kyutai-voices
+```
+
+Use `--dataset`, `--variant`, and `--limit` to select a smaller set. `--dry-run` writes the planned outputs to the manifest without opening a synthesis runtime or fetching WAVs. `--offline` uses cached catalog, bundle, and prompt assets. `--exclude-noncommercial` mechanically filters explicit license labels from the catalog; this is not legal advice.
 
 ## Long-text synthesis
 
@@ -78,7 +118,7 @@ python examples/download_and_synthesize.py
 
 ## Run examples
 
-The runner avoids managed downloads by default. If `POCKETSYNTH_EXAMPLE_VOICE` is unset, it can run the predefined-voice example and skips examples that need a reference WAV. Listing examples does not run them.
+The runner avoids managed downloads by default. With `--include-network` and no `POCKETSYNTH_EXAMPLE_VOICE`, it can run the predefined-voice and single managed Kyutai examples while skipping scripts that need a local WAV. Listing examples does not run them.
 
 ```bash
 python examples/run_all.py --list

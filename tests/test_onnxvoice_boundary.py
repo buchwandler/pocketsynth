@@ -6,10 +6,12 @@ import pytest
 
 from pocketsynth._onnxvoice import (
     ResolvedPocketBundle,
+    ResolvedVoicePrompt,
     _call,
     normalize_pocket_ref,
     normalize_provider_request,
     open_installed_bundle,
+    resolve_voice_prompt,
 )
 from pocketsynth.errors import (
     AssetAccessError,
@@ -20,6 +22,7 @@ from pocketsynth.errors import (
     OfflineAssetError,
     OptionalDependencyError,
     UnsupportedBundleError,
+    VoicePromptError,
 )
 from pocketsynth.runtime import PocketRuntime
 
@@ -132,6 +135,7 @@ def test_managed_bundle_catalog_voice_names_reach_runtime(tmp_path: Path) -> Non
     )
 
     cache_dir = tmp_path / "onnxvoice-cache"
+    progress = MagicMock()
     adapter = MagicMock()
     state = object()
     adapter.prepare_predefined_voice.return_value = state
@@ -139,8 +143,35 @@ def test_managed_bundle_catalog_voice_names_reach_runtime(tmp_path: Path) -> Non
         patch("pocketsynth.runtime.open_installed_bundle", return_value=adapter) as open_runtime,
         patch("pocketsynth.runtime.PocketFrontend"),
     ):
-        runtime = PocketRuntime.from_resolved(resolved, cache_dir=cache_dir, offline=True)
+        runtime = PocketRuntime.from_resolved(
+            resolved, cache_dir=cache_dir, offline=True, progress=progress
+        )
 
+    assert runtime._cache_dir == cache_dir
+    assert runtime._offline is True
+    assert runtime._progress is progress
+    with patch("pocketsynth.runtime.resolve_voice_prompt") as resolve_prompt:
+        runtime._resolve_voice_prompt("kyutai-tts-voices:alba-mackenna/casual")
+    resolve_prompt.assert_called_once_with(
+        "kyutai-tts-voices:alba-mackenna/casual",
+        cache_dir=cache_dir,
+        offline=True,
+        progress=progress,
+    )
+    with patch(
+        "pocketsynth.runtime.list_pocket_voice_prompts", return_value=("prompt",)
+    ) as list_prompts:
+        assert runtime.list_voice_prompts(
+            dataset="alba-mackenna", variant="casual", license="cc-by-4.0"
+        ) == ("prompt",)
+    list_prompts.assert_called_once_with(
+        cache_dir=cache_dir,
+        offline=True,
+        dataset="alba-mackenna",
+        variant="casual",
+        license="cc-by-4.0",
+        progress=progress,
+    )
     assert runtime.predefined_voices == ("alba",)
     open_runtime.assert_called_once_with(
         resolved,
@@ -189,3 +220,77 @@ def test_managed_bundle_rejects_catalog_voice_name_disagreement(tmp_path: Path) 
 
     with pytest.raises(UnsupportedBundleError, match="disagree"):
         PocketRuntime.from_resolved(resolved)
+
+
+def test_resolve_voice_prompt_resolves_and_fetches_through_onnxvoice(
+    tmp_path: Path,
+) -> None:
+    ref = "kyutai-tts-voices:alba-mackenna/casual"
+    path = tmp_path / "casual.wav"
+    prompt = MagicMock(
+        ref=ref,
+        source_repository="kyutai/tts-voices",
+        source_revision="pinned-revision",
+        source_path="alba-mackenna/casual.wav",
+        size=1234,
+        sha256="prompt-sha256",
+        license="cc-by-4.0",
+        dataset="alba-mackenna",
+        variant="casual",
+    )
+    module = MagicMock()
+    manager = module.OnnxVoice.return_value
+    manager.resolve_pocket_voice_prompt.return_value = prompt
+    manager.fetch_pocket_voice_prompt.return_value = path
+    progress_events = []
+    progress = progress_events.append
+    cache_dir = tmp_path / "cache"
+
+    with patch("pocketsynth._onnxvoice._onnxvoice", return_value=module):
+        resolved = resolve_voice_prompt(ref, cache_dir=cache_dir, offline=True, progress=progress)
+
+    module.OnnxVoice.assert_called_once_with(cache_dir=cache_dir, offline=True)
+    manager.resolve_pocket_voice_prompt.assert_called_once_with(ref)
+    manager.fetch_pocket_voice_prompt.assert_called_once()
+    assert manager.fetch_pocket_voice_prompt.call_args.args == (ref,)
+    upstream_progress = manager.fetch_pocket_voice_prompt.call_args.kwargs["progress"]
+    assert callable(upstream_progress)
+    upstream_progress(type("Event", (), {"phase": "download_started", "ref": ref})())
+    assert progress_events[0].phase == "download"
+    assert progress_events[0].ref == ref
+    assert resolved == ResolvedVoicePrompt(
+        ref=ref,
+        path=path,
+        source_repository="kyutai/tts-voices",
+        source_revision="pinned-revision",
+        source_path="alba-mackenna/casual.wav",
+        size=1234,
+        sha256="prompt-sha256",
+        license="cc-by-4.0",
+        dataset="alba-mackenna",
+        variant="casual",
+    )
+
+
+@pytest.mark.parametrize(
+    ("upstream_name", "expected_type"),
+    [
+        ("VoicePromptOfflineError", OfflineAssetError),
+        ("VoicePromptIntegrityError", AssetCacheError),
+        ("UnknownVoicePromptError", VoicePromptError),
+    ],
+)
+def test_managed_prompt_errors_map_to_actionable_pocketsynth_errors(
+    upstream_name: str, expected_type: type[Exception]
+) -> None:
+    error_type = type(upstream_name, (Exception,), {})
+    module = MagicMock()
+    module.OnnxVoice.return_value.resolve_pocket_voice_prompt.side_effect = error_type(
+        "catalog detail"
+    )
+
+    with patch("pocketsynth._onnxvoice._onnxvoice", return_value=module):
+        with pytest.raises(expected_type, match="catalog detail") as caught:
+            resolve_voice_prompt("kyutai-tts-voices:missing")
+
+    assert isinstance(caught.value.__cause__, error_type)

@@ -237,4 +237,5 @@ def test_from_pretrained_delegates_install_and_resolved_open() -> None:
         session_options="options",
         cache_dir="cache",
         offline=True,
+        progress=progress,
     )

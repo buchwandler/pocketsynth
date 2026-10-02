@@ -30,7 +30,7 @@ jobs:
     runs-on: ubuntu-latest
     strategy:
       matrix:
-        onnxvoice-version: ["0.1.12", "0.2.0"]
+        onnxvoice-version: ["0.2.2"]
     steps:
     - uses: actions/checkout@v4
     - name: Setup Python

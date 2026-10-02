@@ -101,7 +101,7 @@ jobs:
               ]
               assert onnxvoice_requirements
               assert all(
-                  has_minimum([requirement], "onnxvoice", "0.1.12")
+                  has_minimum([requirement], "onnxvoice", "0.2.2")
                   for requirement in onnxvoice_requirements
               )
               assert all(

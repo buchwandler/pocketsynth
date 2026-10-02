@@ -20,9 +20,10 @@ from .errors import (
     RuntimeCapabilityError,
     SessionCreationError,
     UnsupportedBundleError,
+    VoicePromptError,
 )
 
-_ONNXVOICE_MINIMUM_VERSION = "0.1.12"
+_ONNXVOICE_MINIMUM_VERSION = "0.2.2"
 
 
 @dataclass(frozen=True, slots=True)
@@ -36,6 +37,20 @@ class ResolvedPocketBundle:
     source_revision: str | None
     metadata: Mapping[str, Any]
     installation: Any | None = None
+
+
+@dataclass(frozen=True, slots=True)
+class ResolvedVoicePrompt:
+    ref: str
+    path: Path
+    source_repository: str
+    source_revision: str
+    source_path: str
+    size: int
+    sha256: str
+    license: str
+    dataset: str
+    variant: str
 
 
 def _onnxvoice() -> Any:
@@ -93,6 +108,23 @@ def normalize_provider_request(
 def _map_error(exc: Exception, *, operation: str) -> Exception:
     name = type(exc).__name__
     message = str(exc) or name
+    if name in {"VoicePromptAccessError"}:
+        return AssetAccessError(message)
+    if name == "VoicePromptOfflineError":
+        return OfflineAssetError(message)
+    if name == "VoicePromptIntegrityError":
+        return AssetCacheError(message)
+    if name == "VoicePromptCatalogError":
+        return CatalogUnavailableError(message)
+    if name in {
+        "VoicePromptError",
+        "InvalidVoicePromptRefError",
+        "UnknownVoicePromptError",
+        "VoicePromptFormatError",
+    }:
+        return VoicePromptError(message)
+    if name in {"VoicePromptDownloadError", "VoicePromptNotFoundError"}:
+        return AssetDownloadError(message)
     if name in {
         "PredefinedVoiceAccessError",
         "AssetAccessError",
@@ -218,6 +250,59 @@ def open_installed_bundle(
             providers=requested,
             provider_options=options,
             session_options=session_options,
+        ),
+    )
+
+
+def resolve_voice_prompt(
+    ref: str,
+    *,
+    cache_dir: str | Path | None = None,
+    offline: bool = False,
+    progress: AssetProgressCallback | None = None,
+) -> ResolvedVoicePrompt:
+    module = _onnxvoice()
+    manager = module.OnnxVoice(cache_dir=cache_dir, offline=offline)
+    prompt = _call(
+        "voice_prompt",
+        lambda: manager.resolve_pocket_voice_prompt(ref),
+    )
+    path = _call(
+        "voice_prompt",
+        lambda: manager.fetch_pocket_voice_prompt(ref, progress=adapt_asset_progress(progress)),
+    )
+    return ResolvedVoicePrompt(
+        ref=prompt.ref,
+        path=Path(path),
+        source_repository=prompt.source_repository,
+        source_revision=prompt.source_revision,
+        source_path=prompt.source_path,
+        size=prompt.size,
+        sha256=prompt.sha256,
+        license=prompt.license,
+        dataset=prompt.dataset,
+        variant=prompt.variant,
+    )
+
+
+def list_voice_prompts(
+    *,
+    cache_dir: str | Path | None = None,
+    offline: bool = False,
+    dataset: str | None = None,
+    variant: str | None = None,
+    license: str | None = None,
+    progress: AssetProgressCallback | None = None,
+) -> tuple[Any, ...]:
+    module = _onnxvoice()
+    manager = module.OnnxVoice(cache_dir=cache_dir, offline=offline)
+    return _call(
+        "voice_prompt",
+        lambda: manager.list_pocket_voice_prompts(
+            dataset=dataset,
+            variant=variant,
+            license=license,
+            progress=adapt_asset_progress(progress),
         ),
     )
 
