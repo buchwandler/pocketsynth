@@ -5,7 +5,7 @@ from __future__ import annotations
 import os
 from pathlib import Path
 
-from _output import artefact_path
+from _output import artifact_path
 
 from pocketsynth import PocketRuntime
 
@@ -23,7 +23,7 @@ voice_path = Path(voice_raw)
 with PocketRuntime.load(bundle_dir, precision="int8") as runtime:
     voice = runtime.prepare_voice(voice_path)
     result = runtime.synthesize_text(TEXT, voice=voice)
-    wav_path = artefact_path("basic_local.wav")
+    wav_path = artifact_path("basic_local.wav")
     result.save_wav(wav_path)
 
 print(f"Bundle: {bundle_dir}")

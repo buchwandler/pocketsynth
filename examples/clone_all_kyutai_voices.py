@@ -7,6 +7,10 @@ import csv
 import re
 from pathlib import Path
 
+try:
+    from _output import artifact_path
+except ModuleNotFoundError:  # imported as examples.clone_all_kyutai_voices
+    from examples._output import artifact_path
 from onnxvoice import OnnxVoice
 
 from pocketsynth import PocketRuntime
@@ -50,7 +54,11 @@ def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--bundle", default=DEFAULT_BUNDLE)
     parser.add_argument("--text", default=DEFAULT_TEXT)
-    parser.add_argument("--output-dir", type=Path, default=Path("output/kyutai-voices"))
+    parser.add_argument(
+        "--output-dir",
+        type=Path,
+        help="output directory (default: example-artifacts/kyutai-voices)",
+    )
     parser.add_argument("--dataset")
     parser.add_argument("--variant")
     parser.add_argument("--limit", type=_nonnegative_int)
@@ -63,6 +71,7 @@ def main(argv: list[str] | None = None) -> int:
         help="filter catalog license labels mechanically; this is not legal advice",
     )
     args = parser.parse_args(argv)
+    args.output_dir = args.output_dir or artifact_path("kyutai-voices")
 
     catalog = OnnxVoice(cache_dir=args.cache_dir, offline=args.offline)
     prompts = catalog.list_pocket_voice_prompts(dataset=args.dataset, variant=args.variant)

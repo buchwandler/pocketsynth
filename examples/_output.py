@@ -7,25 +7,25 @@ import sys
 from pathlib import Path
 
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
-ARTEFACT_DIR = PROJECT_ROOT / "example-artefacts"
+ARTIFACT_DIR = PROJECT_ROOT / "example-artifacts"
 _OUTPUT_ENV = "POCKETSYNTH_EXAMPLE_OUTPUT_DIR"
 
 if sys.path and Path(sys.path[0]).resolve() == Path(__file__).resolve().parent:
     sys.path.pop(0)
 
 
-def artefact_dir() -> Path:
-    """Return the artefact output directory, creating it if needed."""
-    path = Path(os.environ.get(_OUTPUT_ENV, ARTEFACT_DIR)).resolve()
+def artifact_dir() -> Path:
+    """Return the artifact output directory, creating it if needed."""
+    path = Path(os.environ.get(_OUTPUT_ENV, ARTIFACT_DIR)).resolve()
     path.mkdir(parents=True, exist_ok=True)
     return path
 
 
-def artefact_path(name: str | Path) -> Path:
-    """Return a path inside the artefact directory, creating parents if needed."""
-    root = artefact_dir()
+def artifact_path(name: str | Path) -> Path:
+    """Return a path inside the artifact directory, creating parents if needed."""
+    root = artifact_dir()
     path = (root / name).resolve()
     if path != root and root not in path.parents:
-        raise ValueError(f"artefact path escapes {root}: {name}")
+        raise ValueError(f"artifact path escapes {root}: {name}")
     path.parent.mkdir(parents=True, exist_ok=True)
     return path

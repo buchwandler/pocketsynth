@@ -5,7 +5,7 @@ from __future__ import annotations
 import os
 from pathlib import Path
 
-from _output import artefact_path
+from _output import artifact_path
 
 from pocketsynth import PocketRuntime
 
@@ -16,7 +16,7 @@ if not bundle_raw:
 if not voice:
     raise SystemExit("Set POCKETSYNTH_EXAMPLE_VOICE=/path/to/reference.wav")
 
-output = artefact_path("first_wav_local.wav")
+output = artifact_path("first_wav_local.wav")
 with PocketRuntime.load(Path(bundle_raw), precision="int8") as runtime:
     runtime.synthesize_text("Hello from Pocket.", voice=voice).save_wav(output)
 

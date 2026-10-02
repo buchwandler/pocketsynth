@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import os
 
-from _output import artefact_path
+from _output import artifact_path
 
 from pocketsynth import PocketRuntime
 
@@ -13,7 +13,7 @@ OFFLINE = os.environ.get("POCKETSYNTH_EXAMPLE_OFFLINE") == "1"
 
 
 def main() -> int:
-    output = artefact_path("predefined_voice_alba.wav")
+    output = artifact_path("predefined_voice_alba.wav")
     with PocketRuntime.from_pretrained(BUNDLE, offline=OFFLINE) as runtime:
         if "alba" not in runtime.predefined_voices:
             available = ", ".join(runtime.predefined_voices) or "none"

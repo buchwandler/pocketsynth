@@ -38,7 +38,7 @@ with PocketRuntime.from_pretrained("english_2026-04") as runtime:
         ),
         voice=voice,
     )
-    result.save_wav("hello.wav")
+    result.save_wav("example-artifacts/hello.wav")
 ```
 
 `PocketRuntime.synthesize()` is strict and atomic. It encodes the complete request once, then either performs one inference or raises `SynthesisInputTooLongError`. It never splits text. `config=` accepts a validated `GenerationConfig`; `synthesize_text()` is a strict plain-text wrapper that prepares non-`PreparedVoice` inputs.
@@ -52,7 +52,7 @@ from pocketsynth.convenience import synthesize_to_wav
 
 synthesize_to_wav(
     "Hello from Pocket.",
-    "hello.wav",
+    "example-artifacts/hello-convenience.wav",
     bundle="english_2026-04",
     voice="alba",
     sentence_split="phrasplit",  # opt in to sentence segmentation
@@ -92,7 +92,7 @@ from pocketsynth import PocketRuntime
 with PocketRuntime.from_pretrained("english_2026-04") as runtime:
     voice = runtime.prepare_voice("kyutai-tts-voices:alba-mackenna/casual")
     result = runtime.synthesize_text("Hello from a managed Kyutai voice.", voice=voice)
-    result.save_wav("kyutai-casual.wav")
+    result.save_wav("example-artifacts/kyutai-casual.wav")
 ```
 
 Discover prompts without downloading their audio with `runtime.list_voice_prompts()` or `pocketsynth voices list`. The CLI supports `--dataset`, `--variant`, `--license`, and `--offline` filters.
@@ -112,7 +112,7 @@ Managed bundle:
 pocketsynth synthesize \
   --bundle english_2026-04 \
   --voice alba \
-  --output hello.wav \
+  --output example-artifacts/hello.wav \
   "Hello from Pocket."
 ```
 
@@ -122,7 +122,7 @@ Managed Kyutai reference:
 pocketsynth synthesize \
   --bundle english_2026-04 \
   --voice kyutai-tts-voices:alba-mackenna/casual \
-  --output kyutai-casual.wav \
+  --output example-artifacts/kyutai-casual.wav \
   "Hello from PocketSynth."
 ```
 
@@ -138,7 +138,7 @@ Local bundle:
 pocketsynth synthesize \
   --bundle-dir ./onnx/english_2026-04 \
   --voice reference.wav \
-  --output hello-local.wav \
+  --output example-artifacts/hello-local.wav \
   "Hello from Pocket."
 ```
 

@@ -5,7 +5,7 @@ from __future__ import annotations
 import os
 from pathlib import Path
 
-from _output import artefact_path
+from _output import artifact_path
 
 from pocketsynth import PocketRuntime
 
@@ -24,7 +24,7 @@ with PocketRuntime.from_pretrained(
 ) as runtime:
     voice = runtime.prepare_voice(voice_path)
     result = runtime.synthesize_text(TEXT, voice=voice)
-    wav_path = artefact_path("basic.wav")
+    wav_path = artifact_path("basic.wav")
     result.save_wav(wav_path)
 
 print(f"Bundle: {BUNDLE}")

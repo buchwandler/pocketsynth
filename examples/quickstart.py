@@ -5,13 +5,17 @@ from __future__ import annotations
 import argparse
 from pathlib import Path
 
+from _output import artifact_path
+
 from pocketsynth.convenience import synthesize_to_wav
 
 
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description="Synthesize one PocketSynth WAV")
     parser.add_argument("--voice", type=Path, required=True, help="mono 16-bit PCM reference WAV")
-    parser.add_argument("--output", type=Path, required=True, help="output WAV path")
+    parser.add_argument(
+        "--output", type=Path, help="output WAV path (default: example-artifacts/quickstart.wav)"
+    )
     parser.add_argument("--bundle", default="english_2026-04")
     parser.add_argument("--precision", choices=("int8", "fp32"), default="int8")
     parser.add_argument("--cache-dir", type=Path)
@@ -20,10 +24,11 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--force-download", action="store_true")
     parser.add_argument("text", nargs="?", default="Hello from Pocket.")
     args = parser.parse_args(argv)
+    output = args.output or artifact_path("quickstart.wav")
 
     output = synthesize_to_wav(
         args.text,
-        args.output,
+        output,
         bundle=args.bundle,
         voice=args.voice,
         precision=args.precision,

@@ -5,7 +5,7 @@ from __future__ import annotations
 import argparse
 import os
 
-from _output import artefact_path
+from _output import artifact_path
 
 from pocketsynth import PocketRuntime
 from pocketsynth.convenience import synthesize_with_runtime
@@ -27,8 +27,8 @@ def main() -> int:
     )
     parser.parse_args()
 
-    split_output = artefact_path("long-text.wav")
-    unsplit_output = artefact_path("long-text-no-split.wav")
+    split_output = artifact_path("long-text.wav")
+    unsplit_output = artifact_path("long-text-no-split.wav")
     with PocketRuntime.from_pretrained(BUNDLE, offline=OFFLINE) as runtime:
         result = synthesize_with_runtime(runtime, TEXT, voice="alba", sentence_split="phrasplit")
         result.save_wav(split_output)

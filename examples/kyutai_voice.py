@@ -6,6 +6,10 @@ import argparse
 import os
 from pathlib import Path
 
+try:
+    from _output import artifact_path
+except ModuleNotFoundError:  # imported as examples.kyutai_voice
+    from examples._output import artifact_path
 from pocketsynth import PocketRuntime
 
 DEFAULT_BUNDLE = os.environ.get("POCKETSYNTH_EXAMPLE_BUNDLE", "english_2026-04")
@@ -20,7 +24,7 @@ def main(argv: list[str] | None = None) -> int:
         "--voice", default=DEFAULT_REF, help=f"managed reference (default: {DEFAULT_REF})"
     )
     parser.add_argument("--text", default=TEXT)
-    parser.add_argument("--output", type=Path, default=Path("kyutai_casual.wav"))
+    parser.add_argument("--output", type=Path)
     parser.add_argument("--cache-dir", type=Path)
     parser.add_argument(
         "--offline",
@@ -29,14 +33,15 @@ def main(argv: list[str] | None = None) -> int:
         help="use cached bundle and reference assets only",
     )
     args = parser.parse_args(argv)
+    output = args.output or artifact_path("kyutai_casual.wav")
 
     with PocketRuntime.from_pretrained(
         args.bundle, cache_dir=args.cache_dir, offline=args.offline
     ) as runtime:
         voice = runtime.prepare_voice(args.voice)
         audio = runtime.synthesize_text(args.text, voice=voice)
-        audio.save_wav(args.output)
-    print(f"WAV: {args.output}")
+        audio.save_wav(output)
+    print(f"WAV: {output}")
     return 0
 
 

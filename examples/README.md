@@ -22,13 +22,15 @@ Managed examples use `english_2026-04` by default. Local examples also need a bu
 export POCKETSYNTH_EXAMPLE_BUNDLE_DIR=/path/to/onnx/english_2026-04
 ```
 
+Unless an explicit output path or `POCKETSYNTH_EXAMPLE_OUTPUT_DIR` is supplied, every example writes WAV files under `example-artifacts/`.
+
 ## Managed predefined voice
 
 ```bash
 python examples/predefined_voice.py
 ```
 
-The script writes `example-artefacts/predefined_voice_alba.wav`. The bundle's `predefined_voice_names` declares compatibility only. Voice-state assets are separate, may require accepted Hugging Face access terms and authentication, and are resolved and cached by OnnxVoice. After the bundle and voice state are cached, rerun with `POCKETSYNTH_EXAMPLE_OFFLINE=1` to avoid network access.
+The script writes `example-artifacts/predefined_voice_alba.wav`. The bundle's `predefined_voice_names` declares compatibility only. Voice-state assets are separate, may require accepted Hugging Face access terms and authentication, and are resolved and cached by OnnxVoice. After the bundle and voice state are cached, rerun with `POCKETSYNTH_EXAMPLE_OFFLINE=1` to avoid network access.
 
 ## Managed Kyutai reference voices
 
@@ -44,13 +46,13 @@ It defaults to `kyutai-tts-voices:alba-mackenna/casual`. After its bundle and pr
 pocketsynth synthesize \
   --bundle english_2026-04 \
   --voice kyutai-tts-voices:alba-mackenna/casual \
-  --output kyutai-casual.wav \
+  --output example-artifacts/kyutai-casual.wav \
   "Hello from PocketSynth."
 
 pocketsynth synthesize --offline \
   --bundle english_2026-04 \
   --voice kyutai-tts-voices:alba-mackenna/casual \
-  --output kyutai-casual-offline.wav \
+  --output example-artifacts/kyutai-casual-offline.wav \
   "This prompt is loaded from cache."
 ```
 
@@ -65,14 +67,14 @@ pocketsynth voices list --dataset alba-mackenna
 ```bash
 python examples/clone_all_kyutai_voices.py \
   --bundle english_2026-04 \
-  --output-dir output/kyutai-voices
+  --output-dir example-artifacts/kyutai-voices
 ```
 
 Use `--dataset`, `--variant`, and `--limit` to select a smaller set. `--dry-run` writes the planned outputs to the manifest without opening a synthesis runtime or fetching WAVs. `--offline` uses cached catalog, bundle, and prompt assets. `--exclude-noncommercial` mechanically filters explicit license labels from the catalog; this is not legal advice.
 
 ## Long-text synthesis
 
-`long_text.py` uses the bundle-declared `alba` voice and demonstrates opt-in Phrasplit sentence boundaries and `sentence_split="none"`. Sentence splitting defaults to `none`, which still applies Pocket model-limit chunking. It writes `long-text.wav` and `long-text-no-split.wav`.
+`long_text.py` uses the bundle-declared `alba` voice and demonstrates opt-in Phrasplit sentence boundaries and `sentence_split="none"`. Sentence splitting defaults to `none`, which still applies Pocket model-limit chunking. It writes `example-artifacts/long-text.wav` and `example-artifacts/long-text-no-split.wav`.
 
 ```bash
 python examples/long_text.py
@@ -87,7 +89,7 @@ The managed CLI-style example uses a reference WAV:
 ```bash
 python examples/quickstart.py \
   --voice /path/to/reference.wav \
-  --output hello.wav
+  --output example-artifacts/quickstart.wav
 ```
 
 The local equivalent opens a concrete bundle directory:
@@ -96,7 +98,7 @@ The local equivalent opens a concrete bundle directory:
 python examples/local_bundle.py \
   --bundle-dir /path/to/onnx/english_2026-04 \
   --voice /path/to/reference.wav \
-  --output hello-local.wav
+  --output example-artifacts/local_bundle.wav
 ```
 
 ## Reusing a prepared voice
@@ -139,7 +141,7 @@ No additional audio library is needed to inspect a generated container:
 python - <<'PY'
 import wave
 
-with wave.open("hello.wav", "rb") as stream:
+with wave.open("example-artifacts/quickstart.wav", "rb") as stream:
     print(stream.getframerate(), stream.getnframes())
 PY
 ```

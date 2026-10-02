@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import os
 
-from _output import artefact_path
+from _output import artifact_path
 
 from pocketsynth.convenience import synthesize_to_wav
 
@@ -12,7 +12,7 @@ voice = os.environ.get("POCKETSYNTH_EXAMPLE_VOICE")
 if not voice:
     raise SystemExit("Set POCKETSYNTH_EXAMPLE_VOICE=/path/to/reference.wav")
 
-output = artefact_path("first_wav.wav")
+output = artifact_path("first_wav.wav")
 synthesize_to_wav(
     "Hello from PocketSynth.",
     output,

@@ -12,7 +12,7 @@ from pathlib import Path
 
 _EXAMPLES_DIR = Path(__file__).resolve().parent
 _PROJECT_ROOT = _EXAMPLES_DIR.parent
-_ARTEFACT_DIR = _PROJECT_ROOT / "example-artefacts"
+_ARTIFACT_DIR = _PROJECT_ROOT / "example-artifacts"
 
 EXAMPLES = (
     ("predefined_voice.py", "managed"),
@@ -46,7 +46,7 @@ def _validate_wav(path: Path) -> None:
 
 def _run_example(name: str, *, env: dict[str, str]) -> Path:
     script = _EXAMPLES_DIR / name
-    output_dir = _ARTEFACT_DIR / f"examples__{name.replace('.py', '')}"
+    output_dir = _ARTIFACT_DIR / f"examples__{name.replace('.py', '')}"
     output_dir.mkdir(parents=True, exist_ok=True)
     command = [sys.executable, str(script)]
     if name == "kyutai_voice.py":
