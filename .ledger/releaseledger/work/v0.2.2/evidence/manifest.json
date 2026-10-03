@@ -1,0 +1,70 @@
+{
+  "candidate_count": 2,
+  "candidates": [
+    {
+      "additions": 1100,
+      "deletions": 61,
+      "patch_file": "23bcc4e.patch",
+      "patch_sha256": "3321403a0d86e61df768f101272d6a02143279b2d2f9a2e6154b8e444df36177",
+      "paths": [
+        ".github/workflows/python-publish.yml",
+        ".github/workflows/tests.yml",
+        "README.md",
+        "examples/README.md",
+        "examples/clone_all_kyutai_voices.py",
+        "examples/kyutai_voice.py",
+        "examples/run_all.py",
+        "pocketsynth/__main__.py",
+        "pocketsynth/_onnxvoice.py",
+        "pocketsynth/runtime.py",
+        "pocketsynth/voice.py",
+        "pyproject.toml",
+        "tests/integration/test_real_managed_wav.py",
+        "tests/test_cli.py",
+        "tests/test_examples.py",
+        "tests/test_onnxvoice_boundary.py",
+        "tests/test_package_boundary.py",
+        "tests/test_runtime_synthesis.py",
+        "tests/test_voice.py"
+      ],
+      "sha": "23bcc4ef7cb0d9b9f11fd160b433da51e1dd221f",
+      "short_sha": "23bcc4e",
+      "source_ref": "git:23bcc4ef7cb0d9b9f11fd160b433da51e1dd221f"
+    },
+    {
+      "additions": 72,
+      "deletions": 48,
+      "patch_file": "56e20be.patch",
+      "patch_sha256": "02bd38615a7c94263f576e233bdd1a1ff8f29ea0c55bdff85810f44530bfe98b",
+      "paths": [
+        "README.md",
+        "example-artifacts/.gitkeep",
+        "examples/README.md",
+        "examples/_output.py",
+        "examples/basic.py",
+        "examples/basic_local.py",
+        "examples/clone_all_kyutai_voices.py",
+        "examples/download_and_synthesize.py",
+        "examples/first_wav.py",
+        "examples/first_wav_local.py",
+        "examples/kyutai_voice.py",
+        "examples/local_bundle.py",
+        "examples/long_text.py",
+        "examples/predefined_voice.py",
+        "examples/quickstart.py",
+        "examples/run_all.py"
+      ],
+      "sha": "56e20be16bbeb836f3204142b7caf4a861f36f5c",
+      "short_sha": "56e20be",
+      "source_ref": "git:56e20be16bbeb836f3204142b7caf4a861f36f5c"
+    }
+  ],
+  "git_base_ref": "2a7fffca1584d1a991642c73fe1de7d78d95606b",
+  "git_base_sha": "2a7fffca1584d1a991642c73fe1de7d78d95606b",
+  "git_head_ref": "56e20be16bbeb836f3204142b7caf4a861f36f5c",
+  "git_head_sha": "56e20be16bbeb836f3204142b7caf4a861f36f5c",
+  "include_merges": "nontrivial",
+  "object_type": "git_evidence_manifest",
+  "release_version": "v0.2.2",
+  "schema_version": 1
+}

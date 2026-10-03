@@ -1,0 +1,525 @@
+ README.md                                         | 12 ++++++------
+ {example-artefacts => example-artifacts}/.gitkeep |  0
+ examples/README.md                                | 18 ++++++++++--------
+ examples/_output.py                               | 16 ++++++++--------
+ examples/basic.py                                 |  4 ++--
+ examples/basic_local.py                           |  4 ++--
+ examples/clone_all_kyutai_voices.py               | 11 ++++++++++-
+ examples/download_and_synthesize.py               |  4 ++--
+ examples/first_wav.py                             |  4 ++--
+ examples/first_wav_local.py                       |  4 ++--
+ examples/kyutai_voice.py                          | 11 ++++++++---
+ examples/local_bundle.py                          |  9 ++++++---
+ examples/long_text.py                             |  6 +++---
+ examples/predefined_voice.py                      |  4 ++--
+ examples/quickstart.py                            |  9 +++++++--
+ examples/run_all.py                               |  4 ++--
+ 16 files changed, 72 insertions(+), 48 deletions(-)
+
+diff --git a/README.md b/README.md
+index 25f0113..7e1afa3 100644
+--- a/README.md
++++ b/README.md
+@@ -38,7 +38,7 @@ with PocketRuntime.from_pretrained("english_2026-04") as runtime:
+         ),
+         voice=voice,
+     )
+-    result.save_wav("hello.wav")
++    result.save_wav("example-artifacts/hello.wav")
+ ```
+
+ `PocketRuntime.synthesize()` is strict and atomic. It encodes the complete request once, then either performs one inference or raises `SynthesisInputTooLongError`. It never splits text. `config=` accepts a validated `GenerationConfig`; `synthesize_text()` is a strict plain-text wrapper that prepares non-`PreparedVoice` inputs.
+@@ -52,7 +52,7 @@ from pocketsynth.convenience import synthesize_to_wav
+
+ synthesize_to_wav(
+     "Hello from Pocket.",
+-    "hello.wav",
++    "example-artifacts/hello-convenience.wav",
+     bundle="english_2026-04",
+     voice="alba",
+     sentence_split="phrasplit",  # opt in to sentence segmentation
+@@ -92,7 +92,7 @@ from pocketsynth import PocketRuntime
+ with PocketRuntime.from_pretrained("english_2026-04") as runtime:
+     voice = runtime.prepare_voice("kyutai-tts-voices:alba-mackenna/casual")
+     result = runtime.synthesize_text("Hello from a managed Kyutai voice.", voice=voice)
+-    result.save_wav("kyutai-casual.wav")
++    result.save_wav("example-artifacts/kyutai-casual.wav")
+ ```
+
+ Discover prompts without downloading their audio with `runtime.list_voice_prompts()` or `pocketsynth voices list`. The CLI supports `--dataset`, `--variant`, `--license`, and `--offline` filters.
+@@ -112,7 +112,7 @@ Managed bundle:
+ pocketsynth synthesize \
+   --bundle english_2026-04 \
+   --voice alba \
+-  --output hello.wav \
++  --output example-artifacts/hello.wav \
+   "Hello from Pocket."
+ ```
+
+@@ -122,7 +122,7 @@ Managed Kyutai reference:
+ pocketsynth synthesize \
+   --bundle english_2026-04 \
+   --voice kyutai-tts-voices:alba-mackenna/casual \
+-  --output kyutai-casual.wav \
++  --output example-artifacts/kyutai-casual.wav \
+   "Hello from PocketSynth."
+ ```
+
+@@ -138,7 +138,7 @@ Local bundle:
+ pocketsynth synthesize \
+   --bundle-dir ./onnx/english_2026-04 \
+   --voice reference.wav \
+-  --output hello-local.wav \
++  --output example-artifacts/hello-local.wav \
+   "Hello from Pocket."
+ ```
+
+diff --git a/example-artefacts/.gitkeep b/example-artifacts/.gitkeep
+similarity index 100%
+rename from example-artefacts/.gitkeep
+rename to example-artifacts/.gitkeep
+diff --git a/examples/README.md b/examples/README.md
+index 5ebb390..d4cb393 100644
+--- a/examples/README.md
++++ b/examples/README.md
+@@ -22,13 +22,15 @@ Managed examples use `english_2026-04` by default. Local examples also need a bu
+ export POCKETSYNTH_EXAMPLE_BUNDLE_DIR=/path/to/onnx/english_2026-04
+ ```
+
++Unless an explicit output path or `POCKETSYNTH_EXAMPLE_OUTPUT_DIR` is supplied, every example writes WAV files under `example-artifacts/`.
++
+ ## Managed predefined voice
+
+ ```bash
+ python examples/predefined_voice.py
+ ```
+
+-The script writes `example-artefacts/predefined_voice_alba.wav`. The bundle's `predefined_voice_names` declares compatibility only. Voice-state assets are separate, may require accepted Hugging Face access terms and authentication, and are resolved and cached by OnnxVoice. After the bundle and voice state are cached, rerun with `POCKETSYNTH_EXAMPLE_OFFLINE=1` to avoid network access.
++The script writes `example-artifacts/predefined_voice_alba.wav`. The bundle's `predefined_voice_names` declares compatibility only. Voice-state assets are separate, may require accepted Hugging Face access terms and authentication, and are resolved and cached by OnnxVoice. After the bundle and voice state are cached, rerun with `POCKETSYNTH_EXAMPLE_OFFLINE=1` to avoid network access.
+
+ ## Managed Kyutai reference voices
+
+@@ -44,13 +46,13 @@ It defaults to `kyutai-tts-voices:alba-mackenna/casual`. After its bundle and pr
+ pocketsynth synthesize \
+   --bundle english_2026-04 \
+   --voice kyutai-tts-voices:alba-mackenna/casual \
+-  --output kyutai-casual.wav \
++  --output example-artifacts/kyutai-casual.wav \
+   "Hello from PocketSynth."
+
+ pocketsynth synthesize --offline \
+   --bundle english_2026-04 \
+   --voice kyutai-tts-voices:alba-mackenna/casual \
+-  --output kyutai-casual-offline.wav \
++  --output example-artifacts/kyutai-casual-offline.wav \
+   "This prompt is loaded from cache."
+ ```
+
+@@ -65,14 +67,14 @@ pocketsynth voices list --dataset alba-mackenna
+ ```bash
+ python examples/clone_all_kyutai_voices.py \
+   --bundle english_2026-04 \
+-  --output-dir output/kyutai-voices
++  --output-dir example-artifacts/kyutai-voices
+ ```
+
+ Use `--dataset`, `--variant`, and `--limit` to select a smaller set. `--dry-run` writes the planned outputs to the manifest without opening a synthesis runtime or fetching WAVs. `--offline` uses cached catalog, bundle, and prompt assets. `--exclude-noncommercial` mechanically filters explicit license labels from the catalog; this is not legal advice.
+
+ ## Long-text synthesis
+
+-`long_text.py` uses the bundle-declared `alba` voice and demonstrates opt-in Phrasplit sentence boundaries and `sentence_split="none"`. Sentence splitting defaults to `none`, which still applies Pocket model-limit chunking. It writes `long-text.wav` and `long-text-no-split.wav`.
++`long_text.py` uses the bundle-declared `alba` voice and demonstrates opt-in Phrasplit sentence boundaries and `sentence_split="none"`. Sentence splitting defaults to `none`, which still applies Pocket model-limit chunking. It writes `example-artifacts/long-text.wav` and `example-artifacts/long-text-no-split.wav`.
+
+ ```bash
+ python examples/long_text.py
+@@ -87,7 +89,7 @@ The managed CLI-style example uses a reference WAV:
+ ```bash
+ python examples/quickstart.py \
+   --voice /path/to/reference.wav \
+-  --output hello.wav
++  --output example-artifacts/quickstart.wav
+ ```
+
+ The local equivalent opens a concrete bundle directory:
+@@ -96,7 +98,7 @@ The local equivalent opens a concrete bundle directory:
+ python examples/local_bundle.py \
+   --bundle-dir /path/to/onnx/english_2026-04 \
+   --voice /path/to/reference.wav \
+-  --output hello-local.wav
++  --output example-artifacts/local_bundle.wav
+ ```
+
+ ## Reusing a prepared voice
+@@ -139,7 +141,7 @@ No additional audio library is needed to inspect a generated container:
+ python - <<'PY'
+ import wave
+
+-with wave.open("hello.wav", "rb") as stream:
++with wave.open("example-artifacts/quickstart.wav", "rb") as stream:
+     print(stream.getframerate(), stream.getnframes())
+ PY
+ ```
+diff --git a/examples/_output.py b/examples/_output.py
+index c53754e..7cee741 100644
+--- a/examples/_output.py
++++ b/examples/_output.py
+@@ -7,25 +7,25 @@ import sys
+ from pathlib import Path
+
+ PROJECT_ROOT = Path(__file__).resolve().parent.parent
+-ARTEFACT_DIR = PROJECT_ROOT / "example-artefacts"
++ARTIFACT_DIR = PROJECT_ROOT / "example-artifacts"
+ _OUTPUT_ENV = "POCKETSYNTH_EXAMPLE_OUTPUT_DIR"
+
+ if sys.path and Path(sys.path[0]).resolve() == Path(__file__).resolve().parent:
+     sys.path.pop(0)
+
+
+-def artefact_dir() -> Path:
+-    """Return the artefact output directory, creating it if needed."""
+-    path = Path(os.environ.get(_OUTPUT_ENV, ARTEFACT_DIR)).resolve()
++def artifact_dir() -> Path:
++    """Return the artifact output directory, creating it if needed."""
++    path = Path(os.environ.get(_OUTPUT_ENV, ARTIFACT_DIR)).resolve()
+     path.mkdir(parents=True, exist_ok=True)
+     return path
+
+
+-def artefact_path(name: str | Path) -> Path:
+-    """Return a path inside the artefact directory, creating parents if needed."""
+-    root = artefact_dir()
++def artifact_path(name: str | Path) -> Path:
++    """Return a path inside the artifact directory, creating parents if needed."""
++    root = artifact_dir()
+     path = (root / name).resolve()
+     if path != root and root not in path.parents:
+-        raise ValueError(f"artefact path escapes {root}: {name}")
++        raise ValueError(f"artifact path escapes {root}: {name}")
+     path.parent.mkdir(parents=True, exist_ok=True)
+     return path
+diff --git a/examples/basic.py b/examples/basic.py
+index b6892f1..98f92d0 100644
+--- a/examples/basic.py
++++ b/examples/basic.py
+@@ -5,7 +5,7 @@ from __future__ import annotations
+ import os
+ from pathlib import Path
+
+-from _output import artefact_path
++from _output import artifact_path
+
+ from pocketsynth import PocketRuntime
+
+@@ -24,7 +24,7 @@ with PocketRuntime.from_pretrained(
+ ) as runtime:
+     voice = runtime.prepare_voice(voice_path)
+     result = runtime.synthesize_text(TEXT, voice=voice)
+-    wav_path = artefact_path("basic.wav")
++    wav_path = artifact_path("basic.wav")
+     result.save_wav(wav_path)
+
+ print(f"Bundle: {BUNDLE}")
+diff --git a/examples/basic_local.py b/examples/basic_local.py
+index b8ab6fc..da07fb6 100644
+--- a/examples/basic_local.py
++++ b/examples/basic_local.py
+@@ -5,7 +5,7 @@ from __future__ import annotations
+ import os
+ from pathlib import Path
+
+-from _output import artefact_path
++from _output import artifact_path
+
+ from pocketsynth import PocketRuntime
+
+@@ -23,7 +23,7 @@ voice_path = Path(voice_raw)
+ with PocketRuntime.load(bundle_dir, precision="int8") as runtime:
+     voice = runtime.prepare_voice(voice_path)
+     result = runtime.synthesize_text(TEXT, voice=voice)
+-    wav_path = artefact_path("basic_local.wav")
++    wav_path = artifact_path("basic_local.wav")
+     result.save_wav(wav_path)
+
+ print(f"Bundle: {bundle_dir}")
+diff --git a/examples/clone_all_kyutai_voices.py b/examples/clone_all_kyutai_voices.py
+index c2c5f81..e8c0f5d 100644
+--- a/examples/clone_all_kyutai_voices.py
++++ b/examples/clone_all_kyutai_voices.py
+@@ -7,6 +7,10 @@ import csv
+ import re
+ from pathlib import Path
+
++try:
++    from _output import artifact_path
++except ModuleNotFoundError:  # imported as examples.clone_all_kyutai_voices
++    from examples._output import artifact_path
+ from onnxvoice import OnnxVoice
+
+ from pocketsynth import PocketRuntime
+@@ -50,7 +54,11 @@ def main(argv: list[str] | None = None) -> int:
+     parser = argparse.ArgumentParser(description=__doc__)
+     parser.add_argument("--bundle", default=DEFAULT_BUNDLE)
+     parser.add_argument("--text", default=DEFAULT_TEXT)
+-    parser.add_argument("--output-dir", type=Path, default=Path("output/kyutai-voices"))
++    parser.add_argument(
++        "--output-dir",
++        type=Path,
++        help="output directory (default: example-artifacts/kyutai-voices)",
++    )
+     parser.add_argument("--dataset")
+     parser.add_argument("--variant")
+     parser.add_argument("--limit", type=_nonnegative_int)
+@@ -63,6 +71,7 @@ def main(argv: list[str] | None = None) -> int:
+         help="filter catalog license labels mechanically; this is not legal advice",
+     )
+     args = parser.parse_args(argv)
++    args.output_dir = args.output_dir or artifact_path("kyutai-voices")
+
+     catalog = OnnxVoice(cache_dir=args.cache_dir, offline=args.offline)
+     prompts = catalog.list_pocket_voice_prompts(dataset=args.dataset, variant=args.variant)
+diff --git a/examples/download_and_synthesize.py b/examples/download_and_synthesize.py
+index c706c3d..08167ec 100644
+--- a/examples/download_and_synthesize.py
++++ b/examples/download_and_synthesize.py
+@@ -4,7 +4,7 @@ from __future__ import annotations
+
+ import os
+
+-from _output import artefact_path
++from _output import artifact_path
+
+ from pocketsynth import ConsoleAssetProgress
+ from pocketsynth.convenience import synthesize_to_wav
+@@ -13,7 +13,7 @@ voice = os.environ.get("POCKETSYNTH_EXAMPLE_VOICE")
+ if not voice:
+     raise SystemExit("Set POCKETSYNTH_EXAMPLE_VOICE=/path/to/reference.wav")
+
+-output = artefact_path("download_and_synthesize.wav")
++output = artifact_path("download_and_synthesize.wav")
+ synthesize_to_wav(
+     "Hello from a managed Pocket bundle.",
+     output,
+diff --git a/examples/first_wav.py b/examples/first_wav.py
+index c763950..80a0e9d 100644
+--- a/examples/first_wav.py
++++ b/examples/first_wav.py
+@@ -4,7 +4,7 @@ from __future__ import annotations
+
+ import os
+
+-from _output import artefact_path
++from _output import artifact_path
+
+ from pocketsynth.convenience import synthesize_to_wav
+
+@@ -12,7 +12,7 @@ voice = os.environ.get("POCKETSYNTH_EXAMPLE_VOICE")
+ if not voice:
+     raise SystemExit("Set POCKETSYNTH_EXAMPLE_VOICE=/path/to/reference.wav")
+
+-output = artefact_path("first_wav.wav")
++output = artifact_path("first_wav.wav")
+ synthesize_to_wav(
+     "Hello from PocketSynth.",
+     output,
+diff --git a/examples/first_wav_local.py b/examples/first_wav_local.py
+index 2faa733..4e3ecb7 100644
+--- a/examples/first_wav_local.py
++++ b/examples/first_wav_local.py
+@@ -5,7 +5,7 @@ from __future__ import annotations
+ import os
+ from pathlib import Path
+
+-from _output import artefact_path
++from _output import artifact_path
+
+ from pocketsynth import PocketRuntime
+
+@@ -16,7 +16,7 @@ if not bundle_raw:
+ if not voice:
+     raise SystemExit("Set POCKETSYNTH_EXAMPLE_VOICE=/path/to/reference.wav")
+
+-output = artefact_path("first_wav_local.wav")
++output = artifact_path("first_wav_local.wav")
+ with PocketRuntime.load(Path(bundle_raw), precision="int8") as runtime:
+     runtime.synthesize_text("Hello from Pocket.", voice=voice).save_wav(output)
+
+diff --git a/examples/kyutai_voice.py b/examples/kyutai_voice.py
+index b1b5b89..43d8956 100644
+--- a/examples/kyutai_voice.py
++++ b/examples/kyutai_voice.py
+@@ -6,6 +6,10 @@ import argparse
+ import os
+ from pathlib import Path
+
++try:
++    from _output import artifact_path
++except ModuleNotFoundError:  # imported as examples.kyutai_voice
++    from examples._output import artifact_path
+ from pocketsynth import PocketRuntime
+
+ DEFAULT_BUNDLE = os.environ.get("POCKETSYNTH_EXAMPLE_BUNDLE", "english_2026-04")
+@@ -20,7 +24,7 @@ def main(argv: list[str] | None = None) -> int:
+         "--voice", default=DEFAULT_REF, help=f"managed reference (default: {DEFAULT_REF})"
+     )
+     parser.add_argument("--text", default=TEXT)
+-    parser.add_argument("--output", type=Path, default=Path("kyutai_casual.wav"))
++    parser.add_argument("--output", type=Path)
+     parser.add_argument("--cache-dir", type=Path)
+     parser.add_argument(
+         "--offline",
+@@ -29,14 +33,15 @@ def main(argv: list[str] | None = None) -> int:
+         help="use cached bundle and reference assets only",
+     )
+     args = parser.parse_args(argv)
++    output = args.output or artifact_path("kyutai_casual.wav")
+
+     with PocketRuntime.from_pretrained(
+         args.bundle, cache_dir=args.cache_dir, offline=args.offline
+     ) as runtime:
+         voice = runtime.prepare_voice(args.voice)
+         audio = runtime.synthesize_text(args.text, voice=voice)
+-        audio.save_wav(args.output)
+-    print(f"WAV: {args.output}")
++        audio.save_wav(output)
++    print(f"WAV: {output}")
+     return 0
+
+
+diff --git a/examples/local_bundle.py b/examples/local_bundle.py
+index 9968685..948aeb9 100644
+--- a/examples/local_bundle.py
++++ b/examples/local_bundle.py
+@@ -5,6 +5,8 @@ from __future__ import annotations
+ import argparse
+ from pathlib import Path
+
++from _output import artifact_path
++
+ from pocketsynth import PocketRuntime
+
+
+@@ -12,16 +14,17 @@ def main(argv: list[str] | None = None) -> int:
+     parser = argparse.ArgumentParser(description="Synthesize from a local Pocket bundle")
+     parser.add_argument("--bundle-dir", type=Path, required=True)
+     parser.add_argument("--voice", required=True, help="predefined voice name or mono PCM16 WAV")
+-    parser.add_argument("--output", type=Path, required=True)
++    parser.add_argument("--output", type=Path)
+     parser.add_argument("--precision", choices=("int8", "fp32"), default="int8")
+     parser.add_argument("text", nargs="?", default="Hello from Pocket.")
+     args = parser.parse_args(argv)
++    output = args.output or artifact_path("local_bundle.wav")
+
+     with PocketRuntime.load(args.bundle_dir, precision=args.precision) as runtime:
+         result = runtime.synthesize_text(args.text, voice=args.voice)
+-        result.save_wav(args.output)
++        result.save_wav(output)
+
+-    print(f"Wrote {args.output.resolve()}")
++    print(f"Wrote {output.resolve()}")
+     return 0
+
+
+diff --git a/examples/long_text.py b/examples/long_text.py
+index 11f686f..89e2860 100644
+--- a/examples/long_text.py
++++ b/examples/long_text.py
+@@ -5,7 +5,7 @@ from __future__ import annotations
+ import argparse
+ import os
+
+-from _output import artefact_path
++from _output import artifact_path
+
+ from pocketsynth import PocketRuntime
+ from pocketsynth.convenience import synthesize_with_runtime
+@@ -27,8 +27,8 @@ def main() -> int:
+     )
+     parser.parse_args()
+
+-    split_output = artefact_path("long-text.wav")
+-    unsplit_output = artefact_path("long-text-no-split.wav")
++    split_output = artifact_path("long-text.wav")
++    unsplit_output = artifact_path("long-text-no-split.wav")
+     with PocketRuntime.from_pretrained(BUNDLE, offline=OFFLINE) as runtime:
+         result = synthesize_with_runtime(runtime, TEXT, voice="alba", sentence_split="phrasplit")
+         result.save_wav(split_output)
+diff --git a/examples/predefined_voice.py b/examples/predefined_voice.py
+index b86b949..7b2b040 100644
+--- a/examples/predefined_voice.py
++++ b/examples/predefined_voice.py
+@@ -4,7 +4,7 @@ from __future__ import annotations
+
+ import os
+
+-from _output import artefact_path
++from _output import artifact_path
+
+ from pocketsynth import PocketRuntime
+
+@@ -13,7 +13,7 @@ OFFLINE = os.environ.get("POCKETSYNTH_EXAMPLE_OFFLINE") == "1"
+
+
+ def main() -> int:
+-    output = artefact_path("predefined_voice_alba.wav")
++    output = artifact_path("predefined_voice_alba.wav")
+     with PocketRuntime.from_pretrained(BUNDLE, offline=OFFLINE) as runtime:
+         if "alba" not in runtime.predefined_voices:
+             available = ", ".join(runtime.predefined_voices) or "none"
+diff --git a/examples/quickstart.py b/examples/quickstart.py
+index 985c336..de68a6b 100644
+--- a/examples/quickstart.py
++++ b/examples/quickstart.py
+@@ -5,13 +5,17 @@ from __future__ import annotations
+ import argparse
+ from pathlib import Path
+
++from _output import artifact_path
++
+ from pocketsynth.convenience import synthesize_to_wav
+
+
+ def main(argv: list[str] | None = None) -> int:
+     parser = argparse.ArgumentParser(description="Synthesize one PocketSynth WAV")
+     parser.add_argument("--voice", type=Path, required=True, help="mono 16-bit PCM reference WAV")
+-    parser.add_argument("--output", type=Path, required=True, help="output WAV path")
++    parser.add_argument(
++        "--output", type=Path, help="output WAV path (default: example-artifacts/quickstart.wav)"
++    )
+     parser.add_argument("--bundle", default="english_2026-04")
+     parser.add_argument("--precision", choices=("int8", "fp32"), default="int8")
+     parser.add_argument("--cache-dir", type=Path)
+@@ -20,10 +24,11 @@ def main(argv: list[str] | None = None) -> int:
+     parser.add_argument("--force-download", action="store_true")
+     parser.add_argument("text", nargs="?", default="Hello from Pocket.")
+     args = parser.parse_args(argv)
++    output = args.output or artifact_path("quickstart.wav")
+
+     output = synthesize_to_wav(
+         args.text,
+-        args.output,
++        output,
+         bundle=args.bundle,
+         voice=args.voice,
+         precision=args.precision,
+diff --git a/examples/run_all.py b/examples/run_all.py
+index c71966b..9755444 100644
+--- a/examples/run_all.py
++++ b/examples/run_all.py
+@@ -12,7 +12,7 @@ from pathlib import Path
+
+ _EXAMPLES_DIR = Path(__file__).resolve().parent
+ _PROJECT_ROOT = _EXAMPLES_DIR.parent
+-_ARTEFACT_DIR = _PROJECT_ROOT / "example-artefacts"
++_ARTIFACT_DIR = _PROJECT_ROOT / "example-artifacts"
+
+ EXAMPLES = (
+     ("predefined_voice.py", "managed"),
+@@ -46,7 +46,7 @@ def _validate_wav(path: Path) -> None:
+
+ def _run_example(name: str, *, env: dict[str, str]) -> Path:
+     script = _EXAMPLES_DIR / name
+-    output_dir = _ARTEFACT_DIR / f"examples__{name.replace('.py', '')}"
++    output_dir = _ARTIFACT_DIR / f"examples__{name.replace('.py', '')}"
+     output_dir.mkdir(parents=True, exist_ok=True)
+     command = [sys.executable, str(script)]
+     if name == "kyutai_voice.py":

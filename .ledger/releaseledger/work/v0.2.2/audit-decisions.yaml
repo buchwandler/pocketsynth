@@ -1,0 +1,56 @@
+rows:
+  - sha: 23bcc4ef7cb0d9b9f11fd160b433da51e1dd221f
+    inspected: true
+    inspected_paths:
+      - .github/workflows/python-publish.yml
+      - .github/workflows/tests.yml
+      - README.md
+      - examples/README.md
+      - examples/clone_all_kyutai_voices.py
+      - examples/kyutai_voice.py
+      - examples/run_all.py
+      - pocketsynth/__main__.py
+      - pocketsynth/_onnxvoice.py
+      - pocketsynth/runtime.py
+      - pocketsynth/voice.py
+      - pyproject.toml
+      - tests/integration/test_real_managed_wav.py
+      - tests/test_cli.py
+      - tests/test_examples.py
+      - tests/test_onnxvoice_boundary.py
+      - tests/test_package_boundary.py
+      - tests/test_runtime_synthesis.py
+      - tests/test_voice.py
+    observed_behavior: "Reviewed the diff: adds managed Kyutai voice-prompt catalog discovery and cached resolution, expands WAV normalization, exposes runtime and CLI prompt support, and adds coverage for prompt synthesis, error mapping, and filtering."
+    public_impact: public
+    decision: accepted
+    target_entry_key: null
+    target_entry_id: null
+    notes: ""
+    stale: false
+  - sha: 56e20be16bbeb836f3204142b7caf4a861f36f5c
+    inspected: true
+    inspected_paths:
+      - README.md
+      - example-artifacts/.gitkeep
+      - examples/README.md
+      - examples/_output.py
+      - examples/basic.py
+      - examples/basic_local.py
+      - examples/clone_all_kyutai_voices.py
+      - examples/download_and_synthesize.py
+      - examples/first_wav.py
+      - examples/first_wav_local.py
+      - examples/kyutai_voice.py
+      - examples/local_bundle.py
+      - examples/long_text.py
+      - examples/predefined_voice.py
+      - examples/quickstart.py
+      - examples/run_all.py
+    observed_behavior: "Reviewed the diff: changes example defaults and documentation to use example-artifacts, adds safer import and output handling, and keeps generated example files and manifests in the documented location."
+    public_impact: public
+    decision: accepted
+    target_entry_key: null
+    target_entry_id: null
+    notes: ""
+    stale: false

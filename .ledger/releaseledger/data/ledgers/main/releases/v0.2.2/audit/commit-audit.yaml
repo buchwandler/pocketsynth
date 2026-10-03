@@ -1,0 +1,124 @@
+schema_version: 1
+object_type: commit_audit_sheet
+versioning:
+  schema_version: 1
+  revision: 3
+release_version: v0.2.2
+git_base_ref: v0.2.1
+git_base_sha: 2a7fffca1584d1a991642c73fe1de7d78d95606b
+git_head_ref: HEAD
+git_head_sha: 56e20be16bbeb836f3204142b7caf4a861f36f5c
+git_range: 2a7fffca1584d1a991642c73fe1de7d78d95606b..56e20be16bbeb836f3204142b7caf4a861f36f5c
+commit_count: 2
+rows:
+  - sha: 23bcc4ef7cb0d9b9f11fd160b433da51e1dd221f
+    source_ref: git:23bcc4ef7cb0d9b9f11fd160b433da51e1dd221f
+    short_sha: 23bcc4e
+    changed_paths:
+      - .github/workflows/python-publish.yml
+      - .github/workflows/tests.yml
+      - README.md
+      - examples/README.md
+      - examples/clone_all_kyutai_voices.py
+      - examples/kyutai_voice.py
+      - examples/run_all.py
+      - pocketsynth/__main__.py
+      - pocketsynth/_onnxvoice.py
+      - pocketsynth/runtime.py
+      - pocketsynth/voice.py
+      - pyproject.toml
+      - tests/integration/test_real_managed_wav.py
+      - tests/test_cli.py
+      - tests/test_examples.py
+      - tests/test_onnxvoice_boundary.py
+      - tests/test_package_boundary.py
+      - tests/test_runtime_synthesis.py
+      - tests/test_voice.py
+    stats:
+      files_changed: 19
+      insertions: 1100
+      deletions: 61
+    inspected: true
+    inspected_paths:
+      - .github/workflows/python-publish.yml
+      - .github/workflows/tests.yml
+      - README.md
+      - examples/README.md
+      - examples/clone_all_kyutai_voices.py
+      - examples/kyutai_voice.py
+      - examples/run_all.py
+      - pocketsynth/__main__.py
+      - pocketsynth/_onnxvoice.py
+      - pocketsynth/runtime.py
+      - pocketsynth/voice.py
+      - pyproject.toml
+      - tests/integration/test_real_managed_wav.py
+      - tests/test_cli.py
+      - tests/test_examples.py
+      - tests/test_onnxvoice_boundary.py
+      - tests/test_package_boundary.py
+      - tests/test_runtime_synthesis.py
+      - tests/test_voice.py
+    observed_behavior:
+      "Reviewed the diff: adds managed Kyutai voice-prompt catalog
+      discovery and cached resolution, expands WAV normalization, exposes runtime and
+      CLI prompt support, and adds coverage for prompt synthesis, error mapping, and
+      filtering."
+    public_impact: public
+    decision: accepted
+    stale: false
+    evidence_subject: "feat: better voice clone support"
+    target_entry_id: entry-0001
+    notes: ""
+  - sha: 56e20be16bbeb836f3204142b7caf4a861f36f5c
+    source_ref: git:56e20be16bbeb836f3204142b7caf4a861f36f5c
+    short_sha: 56e20be
+    changed_paths:
+      - README.md
+      - example-artifacts/.gitkeep
+      - examples/README.md
+      - examples/_output.py
+      - examples/basic.py
+      - examples/basic_local.py
+      - examples/clone_all_kyutai_voices.py
+      - examples/download_and_synthesize.py
+      - examples/first_wav.py
+      - examples/first_wav_local.py
+      - examples/kyutai_voice.py
+      - examples/local_bundle.py
+      - examples/long_text.py
+      - examples/predefined_voice.py
+      - examples/quickstart.py
+      - examples/run_all.py
+    stats:
+      files_changed: 16
+      insertions: 72
+      deletions: 48
+    inspected: true
+    inspected_paths:
+      - README.md
+      - example-artifacts/.gitkeep
+      - examples/README.md
+      - examples/_output.py
+      - examples/basic.py
+      - examples/basic_local.py
+      - examples/clone_all_kyutai_voices.py
+      - examples/download_and_synthesize.py
+      - examples/first_wav.py
+      - examples/first_wav_local.py
+      - examples/kyutai_voice.py
+      - examples/local_bundle.py
+      - examples/long_text.py
+      - examples/predefined_voice.py
+      - examples/quickstart.py
+      - examples/run_all.py
+    observed_behavior:
+      "Reviewed the diff: changes example defaults and documentation
+      to use example-artifacts, adds safer import and output handling, and keeps generated
+      example files and manifests in the documented location."
+    public_impact: public
+    decision: accepted
+    stale: false
+    evidence_subject: "fix: example output"
+    target_entry_id: entry-0002
+    notes: ""
