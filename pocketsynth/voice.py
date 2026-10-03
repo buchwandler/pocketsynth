@@ -12,6 +12,7 @@ import numpy as np
 from ._onnxvoice import ResolvedVoicePrompt
 from .audio import as_float32_mono
 from .errors import VoicePromptError
+from .voice_prompts import VoicePromptInfo
 
 
 @dataclass(frozen=True, slots=True)
@@ -24,6 +25,12 @@ class PreparedVoice:
     metadata: dict[str, Any] = field(default_factory=dict)
     fingerprint: str | None = None
     source_revision: str | None = None
+    voice_prompt: VoicePromptInfo | None = None
+
+    @property
+    def bundle_revision(self) -> str | None:
+        """The active Pocket bundle revision; prompt revisions live on voice_prompt."""
+        return self.source_revision
 
     @property
     def identity(self) -> dict[str, str | int | None] | None:
@@ -37,6 +44,15 @@ class PreparedVoice:
                 "bundle_id": self.bundle_id,
                 "name": name,
                 "source_revision": self.source_revision,
+            }
+        if self.voice_prompt is not None and self.fingerprint is not None:
+            return {
+                "kind": "managed_reference",
+                "ref": self.voice_prompt.ref,
+                "source_sha256": self.voice_prompt.sha256,
+                "source_revision": self.voice_prompt.source_revision,
+                "prepared_sha256": self.fingerprint,
+                "sample_rate": self.sample_rate,
             }
         if kind == "reference" and self.fingerprint is not None:
             return {
@@ -155,17 +171,18 @@ def _predefined_fingerprint(bundle_id: str | None, name: str, source_revision: s
 
 def prepare_voice(
     runtime: Any,
-    source: str | Path | tuple[np.ndarray, int] | PreparedVoice,
+    source: str | Path | tuple[np.ndarray, int] | PreparedVoice | VoicePromptInfo,
     *,
     sample_rate: int,
     bundle_id: str | None = None,
     source_revision: str | None = None,
     predefined_voices: tuple[str, ...] = (),
-    managed_voice_resolver: Callable[[str], ResolvedVoicePrompt] | None = None,
+    managed_voice_resolver: Callable[[str | VoicePromptInfo], ResolvedVoicePrompt] | None = None,
 ) -> PreparedVoice:
     if isinstance(source, PreparedVoice):
         return source
     metadata: dict[str, Any] = {"kind": "reference"}
+    managed_info: VoicePromptInfo | None = None
     if isinstance(source, tuple):
         audio, source_rate = source
         label = None
@@ -190,23 +207,37 @@ def prepare_voice(
             fingerprint=_predefined_fingerprint(bundle_id, source, source_revision),
             source_revision=source_revision,
         )
-    elif isinstance(source, str) and _is_managed_voice_prompt_ref(source):
+    elif isinstance(source, VoicePromptInfo) or (
+        isinstance(source, str) and _is_managed_voice_prompt_ref(source)
+    ):
         if managed_voice_resolver is None:
             raise VoicePromptError("Managed voice prompts require a configured OnnxVoice resolver")
         prompt = managed_voice_resolver(source)
+        managed_info = VoicePromptInfo(
+            ref=prompt.ref,
+            source_repository=prompt.source_repository,
+            source_revision=prompt.source_revision,
+            source_path=prompt.source_path,
+            size=prompt.size,
+            sha256=prompt.sha256,
+            license=prompt.license,
+            dataset=prompt.dataset,
+            variant=prompt.variant,
+        )
         audio = load_reference_audio(prompt.path, target_sample_rate=sample_rate)
         source_rate = sample_rate
-        label = source
+        label = managed_info.ref
         metadata.update(
             {
-                "managed_ref": prompt.ref,
-                "source_repository": prompt.source_repository,
-                "source_revision": prompt.source_revision,
-                "source_path": prompt.source_path,
-                "source_sha256": prompt.sha256,
-                "license": prompt.license,
-                "dataset": prompt.dataset,
-                "variant": prompt.variant,
+                "kind": "managed_reference",
+                "managed_ref": managed_info.ref,
+                "source_repository": managed_info.source_repository,
+                "source_revision": managed_info.source_revision,
+                "source_path": managed_info.source_path,
+                "source_sha256": managed_info.sha256,
+                "license": managed_info.license,
+                "dataset": managed_info.dataset,
+                "variant": managed_info.variant,
             }
         )
     elif isinstance(source, str) and not _looks_like_path_string(source):
@@ -234,4 +265,5 @@ def prepare_voice(
         metadata=metadata,
         fingerprint=_reference_fingerprint(audio, sample_rate),
         source_revision=source_revision,
+        voice_prompt=managed_info,
     )

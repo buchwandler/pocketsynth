@@ -10,7 +10,7 @@ try:
     from _output import artifact_path
 except ModuleNotFoundError:  # imported as examples.kyutai_voice
     from examples._output import artifact_path
-from pocketsynth import PocketRuntime
+from pocketsynth import PocketRuntime, inspect_voice_prompt
 
 DEFAULT_BUNDLE = os.environ.get("POCKETSYNTH_EXAMPLE_BUNDLE", "english_2026-04")
 DEFAULT_REF = "kyutai-tts-voices:alba-mackenna/casual"
@@ -23,6 +23,11 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument(
         "--voice", default=DEFAULT_REF, help=f"managed reference (default: {DEFAULT_REF})"
     )
+    parser.add_argument(
+        "--pin-prompt",
+        action="store_true",
+        help="inspect current catalog metadata and pin its identity before fetching audio",
+    )
     parser.add_argument("--text", default=TEXT)
     parser.add_argument("--output", type=Path)
     parser.add_argument("--cache-dir", type=Path)
@@ -34,11 +39,16 @@ def main(argv: list[str] | None = None) -> int:
     )
     args = parser.parse_args(argv)
     output = args.output or artifact_path("kyutai_casual.wav")
+    voice_source = args.voice
+    if args.pin_prompt:
+        voice_source = inspect_voice_prompt(
+            args.voice, cache_dir=args.cache_dir, offline=args.offline
+        )
 
     with PocketRuntime.from_pretrained(
         args.bundle, cache_dir=args.cache_dir, offline=args.offline
     ) as runtime:
-        voice = runtime.prepare_voice(args.voice)
+        voice = runtime.prepare_voice(voice_source)
         audio = runtime.synthesize_text(args.text, voice=voice)
         audio.save_wav(output)
     print(f"WAV: {output}")

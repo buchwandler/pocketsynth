@@ -71,8 +71,19 @@ An explicit request language is a compatibility assertion against the active bun
 
 ## Voice conditioning
 
-`PreparedVoice` is reusable conditioning state for a compatible bundle and source revision. Reference WAV data is validated as mono PCM16, resampled to the bundle rate, and encoded by OnnxVoice. Its stable identity is based on normalized accepted audio and sample rate. A predefined voice identity includes bundle ID, voice name, and source revision when available.
+`PreparedVoice` is reusable conditioning state for a compatible bundle and source revision. Reference WAV data is validated as uncompressed PCM, downmixed to mono when multichannel, resampled to the bundle rate, and encoded by OnnxVoice. Its stable identity is based on normalized accepted audio and sample rate. A predefined voice identity includes bundle ID, voice name, and source revision when available.
 
+### Metadata-only discovery and pinned managed voices
+
+`list_voice_prompts()` and `inspect_voice_prompt(ref)` are standalone public APIs returning PocketSynth-owned `VoicePromptInfo` records. They use OnnxVoice catalog metadata. `list_voice_prompts()` supports cache and catalog paths, offline and refresh modes, dataset/variant/license filters, and progress callbacks. `inspect_voice_prompt()` supports cache and catalog paths plus offline and refresh modes. They do not require a `PocketRuntime`, install a bundle, open an ONNX session, or fetch prompt WAVs. `discover_bundles()` returns `DiscoveredBundle` and `DiscoveredVoice` records, accepts language and cache/catalog/offline/refresh/progress options, and does not install or open a bundle. `BundleAssetManager` remains available for advanced installation and resolution; the DTO discovery functions are the stable metadata boundary.
+
+`VoicePromptInfo.sha256` and `source_revision` identify the catalog prompt artifact. `PocketRuntime.prepare_voice(ref)` keeps the convenient current-catalog behavior. `PocketRuntime.prepare_voice(info)` first re-inspects the reference and compares the pinned catalog identity before fetching audio. A changed reference raises `VoicePromptChangedError` instead of silently preparing a newer prompt. OnnxVoice remains responsible for fetching the WAV, cache integrity, and offline asset errors.
+
+A managed `PreparedVoice` exposes its typed `voice_prompt`; its `source_revision` and `bundle_revision` refer to the active Pocket bundle, not the prompt. Its `identity` has kind `managed_reference`, with `source_sha256` for the catalog WAV and `prepared_sha256` for the normalized float32 audio fingerprint after decoding, downmixing, resampling, and normalization. These hashes are deliberately distinct. Local reference and predefined voice identities keep their existing semantics.
+
+`runtime_identity(bundle=None)` reports PocketSynth's `engine_version`, the installed OnnxVoice `runtime_revision`, an optional `catalog_revision`, and the selected `bundle_revision`. It reads package metadata only and does not open a model. OnnxVoice 0.2.2 exposes bundle revisions but no separate catalog revision, so PocketSynth returns `catalog_revision=None` rather than inventing one. The supported dependency range remains `onnxvoice>=0.2.2,<0.3`.
+
+The basic workflow prepares the current catalog entry; the pinned workflow inspects metadata before opening a runtime and then passes that record to `prepare_voice()`. Prompt inspection and fetching are separate stages.
 Voice-level configuration can leave audio unchanged, apply a catalog calibration, or explicitly override gain. Missing calibration is reported in metadata; PocketSynth does not invent measurements or measure loudness per request.
 
 ## Generation and results

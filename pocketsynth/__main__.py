@@ -6,14 +6,18 @@ from importlib import import_module
 from pathlib import Path
 from typing import Any
 
-from . import PocketRuntime, __version__
-from ._onnxvoice import list_voice_prompts as query_voice_prompts
-from ._onnxvoice import normalize_pocket_ref
+from . import (
+    PocketRuntime,
+    __version__,
+    discover_bundles,
+    inspect_voice_prompt,
+    list_voice_prompts,
+)
 from .bundle import BundlePaths
 from .config import GenerationConfig
 from .convenience import synthesize_with_runtime
 from .errors import PocketSynthError
-from .voice import _is_managed_voice_prompt_ref, _looks_like_path_string, _read_pcm_wav
+from .voice import _looks_like_path_string, _read_pcm_wav
 
 
 def _providers(values: list[str] | None) -> str | list[str] | None:
@@ -79,7 +83,7 @@ def _synthesize(args: argparse.Namespace) -> int:
 
 def _voices_list(args: argparse.Namespace) -> int:
     try:
-        prompts = query_voice_prompts(
+        prompts = list_voice_prompts(
             cache_dir=args.cache_dir,
             offline=args.offline,
             dataset=args.dataset,
@@ -134,31 +138,33 @@ def _check(args: argparse.Namespace) -> int:
             print(f"FAIL local bundle: {exc}")
             failures += 1
     elif args.bundle:
-        if onnxvoice is None:
-            failures += 1
-        else:
-            try:
-                manager = onnxvoice.OnnxVoice(cache_dir=args.cache_dir, offline=args.offline)
-                item = manager.catalog.resolve(
-                    normalize_pocket_ref(args.bundle), quality=args.precision
+        try:
+            bundles = discover_bundles(cache_dir=args.cache_dir, offline=args.offline)
+            bundle = next(
+                (item for item in bundles if args.bundle in (item.id, item.ref, *item.aliases)),
+                None,
+            )
+            if bundle is None:
+                raise ValueError(f"Unknown Pocket bundle {args.bundle!r}")
+            if args.precision not in bundle.precisions:
+                raise ValueError(
+                    f"Bundle {bundle.id!r} does not provide precision {args.precision!r}"
                 )
-                available_voices = tuple(item.metadata.get("predefined_voice_names") or ())
-                print(f"Catalog: OK ({args.bundle})")
-            except Exception as exc:
-                print(f"FAIL catalog bundle {args.bundle!r}: {exc}")
-                failures += 1
+            available_voices = bundle.predefined_voices
+            print(f"Catalog: OK ({bundle.ref})")
+        except Exception as exc:
+            print(f"FAIL catalog bundle {args.bundle!r}: {exc}")
+            failures += 1
     else:
         print("Bundle: not checked (pass --bundle or --bundle-dir)")
 
     if args.voice:
-        if _is_managed_voice_prompt_ref(args.voice):
+        if args.voice.startswith("kyutai-tts-voices:"):
             try:
-                prompts = query_voice_prompts(cache_dir=args.cache_dir, offline=args.offline)
-                if any(prompt.ref == args.voice for prompt in prompts):
-                    print(f"Managed voice prompt: OK ({args.voice})")
-                else:
-                    print(f"FAIL unknown managed voice prompt {args.voice!r}")
-                    failures += 1
+                prompt = inspect_voice_prompt(
+                    args.voice, cache_dir=args.cache_dir, offline=args.offline
+                )
+                print(f"Managed voice prompt: OK ({prompt.ref})")
             except Exception as exc:
                 print(f"FAIL managed voice prompt {args.voice!r}: {exc}")
                 failures += 1

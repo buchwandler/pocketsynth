@@ -34,13 +34,15 @@ The script writes `example-artifacts/predefined_voice_alba.wav`. The bundle's `p
 
 ## Managed Kyutai reference voices
 
-`kyutai_voice.py` clones a pinned Kyutai reference without a manual WAV download:
+`kyutai_voice.py` demonstrates the simple current-reference workflow without a manual WAV download. Add `--pin-prompt` to inspect and retain catalog metadata first, then prepare exactly that identity:
 
 ```bash
 python examples/kyutai_voice.py
+python examples/kyutai_voice.py --pin-prompt \
+  --output example-artifacts/kyutai-casual-pinned.wav
 ```
 
-It defaults to `kyutai-tts-voices:alba-mackenna/casual`. After its bundle and prompt are cached, run with `--offline` to reuse them without network access. The CLI accepts the same managed reference:
+The default prepares the current catalog identity for `kyutai-tts-voices:alba-mackenna/casual`. `--pin-prompt` calls `inspect_voice_prompt()` before opening the runtime, then passes the resulting `VoicePromptInfo` to `prepare_voice()`. Inspection reads metadata only. Pinned preparation verifies the source SHA-256 and prompt revision before OnnxVoice fetches the WAV; a changed prompt raises `VoicePromptChangedError`. `PreparedVoice.voice_prompt` retains prompt provenance, while `bundle_revision` remains the model revision. The catalog WAV SHA and normalized prepared-audio fingerprint are distinct. After the bundle and prompt are cached, run either mode with `--offline` to reuse them without network access. The CLI accepts the same managed reference:
 
 ```bash
 pocketsynth synthesize \

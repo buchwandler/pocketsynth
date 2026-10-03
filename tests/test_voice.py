@@ -14,6 +14,7 @@ from pocketsynth.voice import (
     load_reference_audio,
     prepare_voice,
 )
+from pocketsynth.voice_prompts import VoicePromptInfo
 
 
 def test_read_wav_and_resample(tmp_path):
@@ -327,7 +328,7 @@ def test_managed_voice_ref_resolves_before_path_detection_and_preserves_metadata
         source_revision="pinned-revision",
         source_path="alba-mackenna/casual.wav",
         size=1234,
-        sha256="prompt-sha256",
+        sha256="aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
         license="cc-by-4.0",
         dataset="alba-mackenna",
         variant="casual",
@@ -354,24 +355,81 @@ def test_managed_voice_ref_resolves_before_path_detection_and_preserves_metadata
     runtime.prepare_voice.assert_called_once_with(audio, sample_rate=24_000)
     assert voice.source == ref
     assert voice.metadata == {
-        "kind": "reference",
+        "kind": "managed_reference",
         "managed_ref": ref,
         "source_repository": "kyutai/tts-voices",
         "source_revision": "pinned-revision",
         "source_path": "alba-mackenna/casual.wav",
-        "source_sha256": "prompt-sha256",
+        "source_sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
         "license": "cc-by-4.0",
         "dataset": "alba-mackenna",
         "variant": "casual",
     }
     assert voice.identity == {
-        "kind": "reference",
-        "sha256": voice.fingerprint,
+        "kind": "managed_reference",
+        "ref": ref,
+        "source_sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "source_revision": "pinned-revision",
+        "prepared_sha256": voice.fingerprint,
         "sample_rate": 24_000,
     }
 
 
-def test_managed_and_local_wav_share_normalized_reference_identity(tmp_path: Path) -> None:
+def test_pinned_prompt_info_is_accepted_and_exposed_as_managed_identity(tmp_path: Path) -> None:
+    ref = "kyutai-tts-voices:alba-mackenna/casual"
+    info = VoicePromptInfo(
+        ref=ref,
+        source_repository="kyutai/tts-voices",
+        source_revision="pinned-revision",
+        source_path="alba-mackenna/casual.wav",
+        size=1234,
+        sha256="a" * 64,
+        license="cc-by-4.0",
+        dataset="alba-mackenna",
+        variant="casual",
+    )
+    prompt = ResolvedVoicePrompt(
+        ref=ref,
+        path=tmp_path / "casual.wav",
+        source_repository=info.source_repository,
+        source_revision=info.source_revision,
+        source_path=info.source_path,
+        size=info.size,
+        sha256=info.sha256,
+        license=info.license,
+        dataset=info.dataset,
+        variant=info.variant,
+    )
+    audio = np.array([0.25, -0.5], dtype=np.float32)
+    resolver = MagicMock(return_value=prompt)
+    runtime = MagicMock()
+
+    with patch("pocketsynth.voice.load_reference_audio", return_value=audio):
+        voice = prepare_voice(
+            runtime,
+            info,
+            sample_rate=24_000,
+            bundle_id="english_2026-04",
+            source_revision="bundle-revision",
+            managed_voice_resolver=resolver,
+        )
+
+    resolver.assert_called_once_with(info)
+    assert voice.voice_prompt == info
+    assert voice.bundle_revision == "bundle-revision"
+    assert voice.voice_prompt.source_revision == "pinned-revision"
+    assert voice.metadata["kind"] == "managed_reference"
+    assert voice.identity == {
+        "kind": "managed_reference",
+        "ref": ref,
+        "source_sha256": info.sha256,
+        "source_revision": info.source_revision,
+        "prepared_sha256": voice.fingerprint,
+        "sample_rate": 24_000,
+    }
+
+
+def test_managed_and_local_wav_share_fingerprint_but_keep_distinct_identity(tmp_path: Path) -> None:
     path = tmp_path / "same.wav"
     frames = np.array([-2000, 0, 1000, 2500], dtype="<i2").tobytes()
     _write_wav(path, channels=1, width=2, frames=frames, rate=16_000)
@@ -383,7 +441,7 @@ def test_managed_and_local_wav_share_normalized_reference_identity(tmp_path: Pat
         source_revision="pinned-revision",
         source_path="alba-mackenna/casual.wav",
         size=len(frames),
-        sha256="prompt-sha256",
+        sha256="aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
         license="cc-by-4.0",
         dataset="alba-mackenna",
         variant="casual",
@@ -398,5 +456,7 @@ def test_managed_and_local_wav_share_normalized_reference_identity(tmp_path: Pat
         managed_voice_resolver=MagicMock(return_value=prompt),
     )
 
-    assert local.identity == managed.identity
     assert local.fingerprint == managed.fingerprint
+    assert local.identity is not None and local.identity["kind"] == "reference"
+    assert managed.identity is not None and managed.identity["kind"] == "managed_reference"
+    assert managed.voice_prompt is not None and managed.voice_prompt.ref == ref

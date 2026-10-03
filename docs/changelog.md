@@ -9,6 +9,7 @@
 ### Added
 
 - Added managed Kyutai voice prompt discovery and synthesis through the runtime and CLI
+- Added typed metadata-only voice discovery and pinned managed prompt preparation
 
 ### Fixed
 

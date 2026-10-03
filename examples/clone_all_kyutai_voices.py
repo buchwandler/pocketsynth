@@ -11,9 +11,8 @@ try:
     from _output import artifact_path
 except ModuleNotFoundError:  # imported as examples.clone_all_kyutai_voices
     from examples._output import artifact_path
-from onnxvoice import OnnxVoice
 
-from pocketsynth import PocketRuntime
+from pocketsynth import PocketRuntime, list_voice_prompts
 
 DEFAULT_BUNDLE = "english_2026-04"
 DEFAULT_TEXT = "Hello. This is a PocketSynth voice-cloning sample."
@@ -73,8 +72,12 @@ def main(argv: list[str] | None = None) -> int:
     args = parser.parse_args(argv)
     args.output_dir = args.output_dir or artifact_path("kyutai-voices")
 
-    catalog = OnnxVoice(cache_dir=args.cache_dir, offline=args.offline)
-    prompts = catalog.list_pocket_voice_prompts(dataset=args.dataset, variant=args.variant)
+    prompts = list_voice_prompts(
+        cache_dir=args.cache_dir,
+        offline=args.offline,
+        dataset=args.dataset,
+        variant=args.variant,
+    )
     if args.exclude_noncommercial:
         prompts = tuple(prompt for prompt in prompts if not _is_noncommercial(prompt.license))
     if args.limit is not None:
@@ -84,7 +87,9 @@ def main(argv: list[str] | None = None) -> int:
     rows: list[dict[str, str]] = []
     if args.dry_run:
         for prompt in prompts:
-            destination = args.output_dir / safe_output_name(prompt.id)
+            destination = args.output_dir / safe_output_name(
+                prompt.ref.removeprefix("kyutai-tts-voices:")
+            )
             rows.append(
                 {
                     "ref": prompt.ref,
@@ -102,7 +107,9 @@ def main(argv: list[str] | None = None) -> int:
             args.bundle, cache_dir=args.cache_dir, offline=args.offline
         ) as runtime:
             for index, prompt in enumerate(prompts, start=1):
-                destination = args.output_dir / safe_output_name(prompt.id)
+                destination = args.output_dir / safe_output_name(
+                    prompt.ref.removeprefix("kyutai-tts-voices:")
+                )
                 row = {
                     "ref": prompt.ref,
                     "source_path": prompt.source_path,

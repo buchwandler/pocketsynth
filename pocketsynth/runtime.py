@@ -12,13 +12,12 @@ from ._onnxvoice import (
     ResolvedPocketBundle,
     ResolvedVoicePrompt,
     _call,
+    fetch_voice_prompt,
     install_pretrained_bundle,
     open_installed_bundle,
     open_local_bundle,
-    resolve_voice_prompt,
     runtime_diagnostics,
 )
-from ._onnxvoice import list_voice_prompts as list_pocket_voice_prompts
 from .asset_progress import AssetProgressCallback
 from .bundle import BundleMetadata, BundlePaths, Precision
 from .config import GenerationConfig
@@ -47,6 +46,9 @@ from .types import (
 )
 from .voice import PreparedVoice, prepare_voice
 from .voice_level import VoiceLevelConfig, apply_voice_level_calibration
+from .voice_prompts import VoicePromptInfo
+from .voice_prompts import inspect_voice_prompt as query_inspect_voice_prompt
+from .voice_prompts import list_voice_prompts as query_voice_prompts
 
 
 class PocketRuntime:
@@ -203,15 +205,26 @@ class PocketRuntime:
         dataset: str | None = None,
         variant: str | None = None,
         license: str | None = None,
-    ) -> tuple[Any, ...]:
+        refresh: bool = False,
+    ) -> tuple[VoicePromptInfo, ...]:
         self._ensure_open()
-        return list_pocket_voice_prompts(
+        return query_voice_prompts(
             cache_dir=self._cache_dir,
             offline=self._offline,
+            refresh=refresh,
             dataset=dataset,
             variant=variant,
             license=license,
             progress=self._progress,
+        )
+
+    def inspect_voice_prompt(self, ref: str, *, refresh: bool = False) -> VoicePromptInfo:
+        self._ensure_open()
+        return query_inspect_voice_prompt(
+            ref,
+            cache_dir=self._cache_dir,
+            offline=self._offline,
+            refresh=refresh,
         )
 
     @property
@@ -233,9 +246,9 @@ class PocketRuntime:
     def sample_rate(self) -> int:
         return self.metadata.sample_rate
 
-    def _resolve_voice_prompt(self, ref: str) -> ResolvedVoicePrompt:
-        return resolve_voice_prompt(
-            ref,
+    def _resolve_voice_prompt(self, source: str | VoicePromptInfo) -> ResolvedVoicePrompt:
+        return fetch_voice_prompt(
+            source,
             cache_dir=self._cache_dir,
             offline=self._offline,
             progress=self._progress,
@@ -275,6 +288,7 @@ class PocketRuntime:
             metadata=voice.metadata,
             fingerprint=voice.fingerprint,
             source_revision=self.source_revision,
+            voice_prompt=voice.voice_prompt,
         )
 
     def infer_tokens(

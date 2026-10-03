@@ -21,6 +21,7 @@ from pocketsynth.runtime import PocketRuntime
 from pocketsynth.types import LinguisticToken, PronunciationOverride, SynthesisRequest
 from pocketsynth.voice import PreparedVoice
 from pocketsynth.voice_level import VoiceLevelConfig
+from pocketsynth.voice_prompts import VoicePromptInfo
 from tests.fakes import FakeBundleMetadata
 
 
@@ -329,6 +330,42 @@ def test_reference_voice_without_catalog_gain_reports_missing_calibration() -> N
         "sample_rate": 24_000,
     }
     assert result.metadata["voice_level_application"]["source"] == "missing_calibration"
+
+
+def test_managed_reference_does_not_use_predefined_voice_calibration() -> None:
+    runtime, _, _ = make_runtime(raw_metadata={"voice_level_calibration": {"alba": -6.0}})
+    info = VoicePromptInfo(
+        ref="kyutai-tts-voices:alba-mackenna/casual",
+        source_repository="kyutai/tts-voices",
+        source_revision="prompt-revision",
+        source_path="alba-mackenna/casual.wav",
+        size=1234,
+        sha256="a" * 64,
+        license="cc-by-4.0",
+        dataset="alba-mackenna",
+        variant="casual",
+    )
+    voice = make_voice(metadata={"kind": "managed_reference"})
+    voice = PreparedVoice(
+        state=voice.state,
+        sample_rate=voice.sample_rate,
+        bundle_id=voice.bundle_id,
+        metadata=voice.metadata,
+        fingerprint=voice.fingerprint,
+        source_revision=voice.source_revision,
+        voice_prompt=info,
+    )
+
+    result = runtime.synthesize(
+        SynthesisRequest(id="managed", text="hello"),
+        voice=voice,
+        voice_level=VoiceLevelConfig(mode="calibrated"),
+    )
+
+    assert result.metadata["voice_identity"]["kind"] == "managed_reference"
+    assert result.metadata["voice_identity"]["source_sha256"] == info.sha256
+    assert result.metadata["voice_level_application"]["source"] == "missing_calibration"
+    np.testing.assert_array_equal(result.audio, np.arange(5, dtype=np.float32))
 
 
 def test_explicit_voice_gain_overrides_calibration_policy() -> None:

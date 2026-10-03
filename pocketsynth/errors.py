@@ -66,6 +66,34 @@ class VoicePromptError(PocketSynthError):
     pass
 
 
+class InvalidVoicePromptMetadataError(VoicePromptError, ValueError):
+    """Raised when catalog prompt metadata violates the public contract."""
+
+
+class VoicePromptChangedError(VoicePromptError):
+    """Raised when a pinned managed prompt no longer matches catalog metadata."""
+
+    def __init__(
+        self,
+        *,
+        ref: str,
+        expected_sha256: str,
+        actual_sha256: str,
+        expected_revision: str | None = None,
+        actual_revision: str | None = None,
+    ) -> None:
+        self.ref = ref
+        self.expected_sha256 = expected_sha256
+        self.actual_sha256 = actual_sha256
+        self.expected_revision = expected_revision
+        self.actual_revision = actual_revision
+        super().__init__(
+            f"Managed voice prompt {ref!r} changed since it was selected: "
+            f"expected SHA-256 {expected_sha256} at revision {expected_revision!r}, "
+            f"catalog now declares SHA-256 {actual_sha256} at revision {actual_revision!r}."
+        )
+
+
 class SynthesisError(PocketSynthError):
     """Base class for request-level synthesis failures."""
 

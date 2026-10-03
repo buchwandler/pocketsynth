@@ -19,7 +19,7 @@ python -m pip install 'pocketsynth[cpu]'
 
 The `gpu` extra selects OnnxVoice's GPU runtime. `playback` adds `sounddevice` for `RenderedSegment.play()`.
 
-Managed Kyutai prompt support uses the OnnxVoice 0.2.2 prompt catalog and cache API; the package dependency installs this minimum automatically.
+Managed Kyutai prompt support uses the OnnxVoice prompt catalog and cache API. The supported dependency range remains `onnxvoice>=0.2.2,<0.3`; installation extras select the desired runtime backend.
 
 ## Direct engine use
 
@@ -82,9 +82,11 @@ An explicit request language is a compatibility assertion against the active bun
 
 Pocket bundles and voice conditioning are separate. `prepare_voice()` accepts bundle-declared predefined names, local PCM WAV paths, `Path` objects, in-memory `(audio, sample_rate)` tuples, existing `PreparedVoice` objects, and managed `kyutai-tts-voices:<id>` references. Reference WAVs support uncompressed PCM 8-, 16-, 24-, and 32-bit mono or multichannel audio; multichannel input is downmixed and audio is resampled to the bundle rate before OnnxVoice encodes it.
 
-`PreparedVoice` can be reused for many requests on a compatible runtime. A reference voice's fingerprint identifies normalized audio and sample rate, while its metadata retains managed source provenance and license. OnnxVoice 0.2.2 owns Kyutai prompt discovery, pinned downloads, cache integrity, and offline behavior. PocketSynth does not download prompt assets itself. Predefined voice states remain separate assets and may require accepting upstream access terms and authenticating with Hugging Face.
+`PreparedVoice` can be reused for many requests on a compatible runtime. For a local reference, `fingerprint` identifies normalized audio and sample rate. For a managed prompt, `voice_prompt` carries typed catalog provenance, while `bundle_revision` identifies the model bundle. A managed identity keeps the catalog asset SHA-256 (`source_sha256`) separate from the normalized prepared-audio fingerprint (`prepared_sha256`).
 
-Managed references are resolved and cached by OnnxVoice, so no WAV download step is needed:
+OnnxVoice 0.2.2 owns prompt catalogs, prompt WAV fetching, cache integrity, and offline behavior. PocketSynth delegates managed audio fetching to OnnxVoice during `prepare_voice()`; metadata discovery does not fetch audio or open a model. Predefined voice states are separate assets and may require accepting upstream access terms and authenticating with Hugging Face.
+
+The simple managed workflow uses the current catalog identity for a reference:
 
 ```python
 from pocketsynth import PocketRuntime
@@ -95,7 +97,30 @@ with PocketRuntime.from_pretrained("english_2026-04") as runtime:
     result.save_wav("example-artifacts/kyutai-casual.wav")
 ```
 
-Discover prompts without downloading their audio with `runtime.list_voice_prompts()` or `pocketsynth voices list`. The CLI supports `--dataset`, `--variant`, `--license`, and `--offline` filters.
+For reproducible orchestration, inspect and retain a `VoicePromptInfo` before opening the runtime. Inspection is metadata-only. Passing that record to `prepare_voice()` checks its prompt reference, catalog SHA-256, and source revision against the current catalog before fetching audio; a changed identity raises `VoicePromptChangedError`.
+
+```python
+from pocketsynth import PocketRuntime, inspect_voice_prompt
+
+prompt = inspect_voice_prompt("kyutai-tts-voices:alba-mackenna/casual")
+# Persist prompt.ref, prompt.sha256, and prompt.source_revision with the render plan.
+
+with PocketRuntime.from_pretrained("english_2026-04") as runtime:
+    voice = runtime.prepare_voice(prompt)
+    assert voice.voice_prompt == prompt
+    identity = voice.identity
+    # identity['source_sha256'] is the catalog WAV hash.
+    # identity['prepared_sha256'] is the normalized audio fingerprint.
+```
+
+`list_voice_prompts()` and `inspect_voice_prompt()` return typed prompt metadata without requiring a runtime, installing a bundle, or fetching WAVs. `discover_bundles()` similarly returns PocketSynth-owned `DiscoveredBundle` and `DiscoveredVoice` records without installing or opening a bundle. `runtime_identity(bundle)` reports PocketSynth and OnnxVoice versions and the bundle revision without opening a model; OnnxVoice 0.2.2 does not expose a separate catalog revision, so `catalog_revision` is `None`. The discovery APIs accept explicit `offline` and `refresh` options; `runtime_identity()` only reads installed package metadata. The runtime list/inspect wrappers remain available, but standalone functions are the metadata-discovery entry points.
+
+The CLI supports metadata-only prompt listing and direct prompt inspection. Filters include `--dataset`, `--variant`, `--license`, and `--offline`:
+
+```bash
+pocketsynth voices list --dataset alba-mackenna
+pocketsynth check --offline --voice kyutai-tts-voices:alba-mackenna/casual
+```
 
 To inspect dependencies, providers, bundle metadata, and voice format:
 

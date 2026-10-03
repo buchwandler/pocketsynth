@@ -4,8 +4,39 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
+from pocketsynth import DiscoveredBundle, VoicePromptInfo
 from pocketsynth.__main__ import main
 from pocketsynth.errors import VoicePromptError
+
+
+def voice_prompt(ref: str) -> VoicePromptInfo:
+    return VoicePromptInfo(
+        ref=ref,
+        source_repository="kyutai-tts-voices",
+        source_revision="catalog-revision",
+        source_path="speaker/prompt.wav",
+        size=42,
+        sha256="a" * 64,
+        license="cc-by-4.0",
+        dataset="alba-mackenna",
+        variant="casual",
+    )
+
+
+def discovered_bundle() -> DiscoveredBundle:
+    return DiscoveredBundle(
+        id="english_2026-04",
+        ref="pocket:english_2026-04",
+        display_name="English",
+        aliases=(),
+        language="en",
+        sample_rate=24_000,
+        precisions=("int8", "fp32"),
+        predefined_voices=("alba",),
+        default_voice="alba",
+        source_revision="bundle-revision",
+        max_tokens=512,
+    )
 
 
 @pytest.mark.parametrize("voice", ["alba", "voice.wav", "kyutai-tts-voices:alba-mackenna/casual"])
@@ -101,11 +132,10 @@ def test_check_reports_available_provider(capsys) -> None:
 def test_check_validates_predefined_names_from_catalog(
     voice: str, expected_status: int, expected_text: str, capsys
 ) -> None:
-    manager = MagicMock()
-    manager.catalog.resolve.return_value.metadata = {"predefined_voice_names": ["alba"]}
-
     with (
-        patch("onnxvoice.OnnxVoice", return_value=manager),
+        patch(
+            "pocketsynth.__main__.discover_bundles", return_value=(discovered_bundle(),)
+        ) as discover,
         patch("onnxvoice.available_providers", return_value=["CPUExecutionProvider"]),
         patch("pocketsynth.__main__._read_pcm_wav") as read_wav,
     ):
@@ -114,8 +144,7 @@ def test_check_validates_predefined_names_from_catalog(
     output = capsys.readouterr().out
     assert status == expected_status
     assert expected_text in output
-    manager.catalog.resolve.assert_called_once_with("pocket:english_2026-04", quality="int8")
-    manager.install.assert_not_called()
+    discover.assert_called_once_with(cache_dir=None, offline=False)
     read_wav.assert_not_called()
 
 
@@ -165,18 +194,10 @@ def test_synthesize_cli_documents_sentence_split_modes(capsys) -> None:
 
 def test_voices_list_filters_catalog_without_fetching_audio(tmp_path, capsys) -> None:
     ref = "kyutai-tts-voices:alba-mackenna/casual"
-    prompt = MagicMock(
-        ref=ref,
-        dataset="alba-mackenna",
-        variant="casual",
-        license="cc-by-4.0",
-        source_path="alba-mackenna/casual.wav",
-    )
-    manager = MagicMock()
-    manager.list_pocket_voice_prompts.return_value = (prompt,)
+    prompt = voice_prompt(ref)
     cache_dir = tmp_path / "cache"
 
-    with patch("onnxvoice.OnnxVoice", return_value=manager):
+    with patch("pocketsynth.__main__.list_voice_prompts", return_value=(prompt,)) as listing:
         status = main(
             [
                 "voices",
@@ -196,33 +217,33 @@ def test_voices_list_filters_catalog_without_fetching_audio(tmp_path, capsys) ->
     assert status == 0
     output = capsys.readouterr().out
     assert "REF\tDATASET\tVARIANT\tLICENSE\tSOURCE_PATH" in output
-    assert f"{ref}\talba-mackenna\tcasual\tcc-by-4.0\talba-mackenna/casual.wav" in output
-    manager.list_pocket_voice_prompts.assert_called_once_with(
+    assert f"{ref}\talba-mackenna\tcasual\tcc-by-4.0\tspeaker/prompt.wav" in output
+    listing.assert_called_once_with(
+        cache_dir=cache_dir,
+        offline=True,
         dataset="alba-mackenna",
         variant="casual",
         license="cc-by-4.0",
-        progress=None,
     )
-    manager.fetch_pocket_voice_prompt.assert_not_called()
 
 
-def test_check_recognizes_cataloged_managed_voice_without_fetching_audio(capsys) -> None:
+def test_check_inspects_managed_voice_without_fetching_audio(capsys) -> None:
     ref = "kyutai-tts-voices:alba-mackenna/casual"
-    prompt = MagicMock(ref=ref)
-    manager = MagicMock()
-    manager.list_pocket_voice_prompts.return_value = (prompt,)
+    prompt = voice_prompt(ref)
 
     with (
-        patch("onnxvoice.OnnxVoice", return_value=manager),
+        patch("pocketsynth.__main__.inspect_voice_prompt", return_value=prompt) as inspect,
         patch("onnxvoice.available_providers", return_value=["CPUExecutionProvider"]),
         patch("pocketsynth.__main__._read_pcm_wav") as read_wav,
+        patch("pocketsynth.__main__.PocketRuntime.from_pretrained") as factory,
     ):
         status = main(["check", "--offline", "--voice", ref])
 
     assert status == 0
     assert f"Managed voice prompt: OK ({ref})" in capsys.readouterr().out
-    manager.fetch_pocket_voice_prompt.assert_not_called()
+    inspect.assert_called_once_with(ref, cache_dir=None, offline=True)
     read_wav.assert_not_called()
+    factory.assert_not_called()
 
 
 def test_synthesize_cli_reports_invalid_managed_voice_cleanly(tmp_path, capsys) -> None:

@@ -16,6 +16,7 @@ from .assets import PocketBundle
 from .bundle import BundleMetadata, BundlePaths
 from .config import GenerationConfig
 from .diagnostics import RuntimeDiagnostics, SynthesisTiming
+from .discovery import DiscoveredBundle, DiscoveredVoice, discover_bundles, runtime_identity
 from .errors import (
     BundleError,
     BundleLanguageError,
@@ -25,6 +26,7 @@ from .errors import (
     InvalidLanguageError,
     InvalidRequestError,
     InvalidVoiceError,
+    InvalidVoicePromptMetadataError,
     ModelInferenceError,
     OptionalDependencyError,
     PocketSynthError,
@@ -33,6 +35,7 @@ from .errors import (
     SynthesisInputTooLongError,
     UnsupportedBundleError,
     UnsupportedFeatureError,
+    VoicePromptChangedError,
     VoicePromptError,
 )
 from .runtime import PocketRuntime
@@ -53,6 +56,7 @@ from .voice_level import (
     VoiceLevelMode,
     VoiceLevelSource,
 )
+from .voice_prompts import VoicePromptInfo, inspect_voice_prompt, list_voice_prompts
 
 __all__ = [
     "AssetProgressCallback",
@@ -64,12 +68,15 @@ __all__ = [
     "BundleNotFoundError",
     "BundlePaths",
     "ConsoleAssetProgress",
+    "DiscoveredBundle",
+    "DiscoveredVoice",
     "EmptyTextError",
     "GenerationConfig",
     "InvalidGenerationConfigError",
     "InvalidLanguageError",
     "InvalidRequestError",
     "InvalidVoiceError",
+    "InvalidVoicePromptMetadataError",
     "LinguisticToken",
     "ModelInferenceError",
     "OptionalDependencyError",
@@ -94,6 +101,12 @@ __all__ = [
     "VoiceLevelConfig",
     "VoiceLevelMode",
     "VoiceLevelSource",
+    "VoicePromptChangedError",
     "VoicePromptError",
+    "VoicePromptInfo",
+    "discover_bundles",
+    "inspect_voice_prompt",
+    "list_voice_prompts",
+    "runtime_identity",
     "WordTiming",
 ]

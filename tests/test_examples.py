@@ -67,6 +67,7 @@ def test_kyutai_voice_example_help_is_available_without_runtime_assets() -> None
     help_text = " ".join(result.stdout.split())
     assert "--voice VOICE" in help_text
     assert "--offline" in result.stdout
+    assert "--pin-prompt" in result.stdout
 
 
 def test_clone_all_example_help_lists_requested_options() -> None:
@@ -120,32 +121,61 @@ def test_kyutai_voice_example_uses_managed_ref_without_manual_download(tmp_path:
     runtime.synthesize_text.return_value.save_wav.assert_called_once_with(output)
 
 
+def test_kyutai_voice_example_can_pin_prompt_metadata(tmp_path: Path) -> None:
+    prompt = MagicMock()
+    runtime = MagicMock()
+    context = MagicMock()
+    context.__enter__.return_value = runtime
+    context.__exit__.return_value = False
+    output = tmp_path / "pinned.wav"
+
+    with (
+        patch("examples.kyutai_voice.inspect_voice_prompt", return_value=prompt) as inspect,
+        patch(
+            "examples.kyutai_voice.PocketRuntime.from_pretrained", return_value=context
+        ) as factory,
+    ):
+        status = kyutai_voice_main(
+            [
+                "--voice",
+                "kyutai-tts-voices:alba-mackenna/casual",
+                "--pin-prompt",
+                "--output",
+                str(output),
+                "--offline",
+            ]
+        )
+
+    assert status == 0
+    inspect.assert_called_once_with(
+        "kyutai-tts-voices:alba-mackenna/casual", cache_dir=None, offline=True
+    )
+    factory.assert_called_once_with("english_2026-04", cache_dir=None, offline=True)
+    runtime.prepare_voice.assert_called_once_with(prompt)
+    runtime.synthesize_text.assert_called_once()
+
+
 def test_clone_all_continues_after_errors_and_writes_manifest(tmp_path: Path) -> None:
     prompts = (
         SimpleNamespace(
-            id="alba-mackenna/casual",
             ref="kyutai-tts-voices:alba-mackenna/casual",
             source_path="alba-mackenna/casual.wav",
             license="CC-BY-4.0",
             variant="casual",
         ),
         SimpleNamespace(
-            id="vctk/speaker 2",
             ref="kyutai-tts-voices:vctk/speaker-2",
             source_path="vctk/speaker-2.wav",
             license="CC-BY-4.0",
             variant="casual",
         ),
         SimpleNamespace(
-            id="donation/nc",
             ref="kyutai-tts-voices:donation/nc",
             source_path="donation/nc.wav",
             license="CC-BY-NC-4.0",
             variant="casual",
         ),
     )
-    catalog = MagicMock()
-    catalog.list_pocket_voice_prompts.return_value = prompts
     runtime = MagicMock()
     runtime.__enter__.return_value = runtime
     runtime.__exit__.return_value = False
@@ -164,7 +194,9 @@ def test_clone_all_continues_after_errors_and_writes_manifest(tmp_path: Path) ->
     output_dir = tmp_path / "voices"
 
     with (
-        patch("examples.clone_all_kyutai_voices.OnnxVoice", return_value=catalog),
+        patch(
+            "examples.clone_all_kyutai_voices.list_voice_prompts", return_value=prompts
+        ) as listing,
         patch(
             "examples.clone_all_kyutai_voices.PocketRuntime.from_pretrained", return_value=runtime
         ) as factory,
@@ -189,24 +221,26 @@ def test_clone_all_continues_after_errors_and_writes_manifest(tmp_path: Path) ->
         )
 
     assert status == 1
-    catalog.list_pocket_voice_prompts.assert_called_once_with(
-        dataset="alba-mackenna", variant="casual"
+    listing.assert_called_once_with(
+        cache_dir=None,
+        offline=True,
+        dataset="alba-mackenna",
+        variant="casual",
     )
     factory.assert_called_once_with("test-bundle", cache_dir=None, offline=True)
     assert prepared == [prompts[0].ref, prompts[1].ref]
     assert (output_dir / "alba-mackenna__casual.wav").is_file()
-    assert not (output_dir / "vctk__speaker__2.wav").exists()
+    assert not (output_dir / "vctk__speaker-2.wav").exists()
     with (output_dir / "manifest.csv").open(encoding="utf-8", newline="") as stream:
         rows = list(csv.DictReader(stream))
     assert [row["status"] for row in rows] == ["ok", "error"]
     assert rows[1]["error"] == "RuntimeError: broken sample"
-    assert rows[1]["output"].endswith("vctk__speaker__2.wav")
+    assert rows[1]["output"].endswith("vctk__speaker-2.wav")
 
 
 def test_clone_all_dry_run_discovers_every_prompt_without_opening_runtime(tmp_path: Path) -> None:
     prompts = tuple(
         SimpleNamespace(
-            id=f"speaker/{index}",
             ref=f"kyutai-tts-voices:speaker/{index}",
             source_path=f"speaker/{index}.wav",
             license="CC-BY-4.0",
@@ -214,18 +248,19 @@ def test_clone_all_dry_run_discovers_every_prompt_without_opening_runtime(tmp_pa
         )
         for index in range(3)
     )
-    catalog = MagicMock()
-    catalog.list_pocket_voice_prompts.return_value = prompts
     output_dir = tmp_path / "dry-run"
 
     with (
-        patch("examples.clone_all_kyutai_voices.OnnxVoice", return_value=catalog),
+        patch(
+            "examples.clone_all_kyutai_voices.list_voice_prompts", return_value=prompts
+        ) as listing,
         patch("examples.clone_all_kyutai_voices.PocketRuntime.from_pretrained") as factory,
     ):
         status = clone_all_main(["--output-dir", str(output_dir), "--dry-run"])
 
     assert status == 0
     factory.assert_not_called()
+    listing.assert_called_once_with(cache_dir=None, offline=False, dataset=None, variant=None)
     with (output_dir / "manifest.csv").open(encoding="utf-8", newline="") as stream:
         rows = list(csv.DictReader(stream))
     assert len(rows) == len(prompts)

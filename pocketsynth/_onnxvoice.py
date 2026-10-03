@@ -20,6 +20,7 @@ from .errors import (
     RuntimeCapabilityError,
     SessionCreationError,
     UnsupportedBundleError,
+    VoicePromptChangedError,
     VoicePromptError,
 )
 
@@ -254,6 +255,155 @@ def open_installed_bundle(
     )
 
 
+def list_pocket_bundles(
+    *,
+    language: str | None = None,
+    cache_dir: str | Path | None = None,
+    catalog_path: str | Path | None = None,
+    offline: bool = False,
+    refresh: bool = False,
+    progress: AssetProgressCallback | None = None,
+) -> tuple[Any, ...]:
+    """Query Pocket catalog metadata without installing a bundle or opening a runtime."""
+    module = _onnxvoice()
+    kwargs: dict[str, Any] = {"cache_dir": cache_dir, "offline": offline}
+    if catalog_path is not None:
+        kwargs["catalog_sources"] = {"pocket": str(catalog_path)}
+    manager = module.OnnxVoice(**kwargs)
+    return tuple(
+        _call(
+            "bundle_discover",
+            lambda: manager.list(
+                "pocket",
+                language=language,
+                refresh=refresh,
+                progress=adapt_asset_progress(progress),
+            ),
+        )
+    )
+
+
+def _voice_prompt_manager(
+    *,
+    cache_dir: str | Path | None,
+    catalog_path: str | Path | None,
+    offline: bool,
+) -> Any:
+    module = _onnxvoice()
+    kwargs: dict[str, Any] = {"cache_dir": cache_dir, "offline": offline}
+    if catalog_path is not None:
+        kwargs["catalog_sources"] = {"pocket_voice_prompts": str(catalog_path)}
+    return module.OnnxVoice(**kwargs)
+
+
+def inspect_voice_prompt_metadata(
+    ref: str,
+    *,
+    cache_dir: str | Path | None = None,
+    catalog_path: str | Path | None = None,
+    offline: bool = False,
+    refresh: bool = False,
+) -> Any:
+    """Resolve prompt catalog metadata without fetching its WAV payload."""
+    manager = _voice_prompt_manager(
+        cache_dir=cache_dir,
+        catalog_path=catalog_path,
+        offline=offline,
+    )
+    return _call(
+        "voice_prompt_inspect",
+        lambda: manager.resolve_pocket_voice_prompt(ref, refresh=refresh),
+    )
+
+
+def list_voice_prompt_metadata(
+    *,
+    cache_dir: str | Path | None = None,
+    catalog_path: str | Path | None = None,
+    offline: bool = False,
+    refresh: bool = False,
+    dataset: str | None = None,
+    variant: str | None = None,
+    license: str | None = None,
+    progress: AssetProgressCallback | None = None,
+) -> tuple[Any, ...]:
+    """List prompt catalog metadata without fetching WAV payloads."""
+    manager = _voice_prompt_manager(
+        cache_dir=cache_dir,
+        catalog_path=catalog_path,
+        offline=offline,
+    )
+    return _call(
+        "voice_prompt_list",
+        lambda: manager.list_pocket_voice_prompts(
+            dataset=dataset,
+            variant=variant,
+            license=license,
+            refresh=refresh,
+            progress=adapt_asset_progress(progress),
+        ),
+    )
+
+
+def fetch_voice_prompt(
+    source: Any,
+    *,
+    cache_dir: str | Path | None = None,
+    catalog_path: str | Path | None = None,
+    offline: bool = False,
+    refresh: bool = False,
+    progress: AssetProgressCallback | None = None,
+) -> ResolvedVoicePrompt:
+    """Resolve, verify, and fetch a managed prompt for runtime preparation."""
+    from .voice_prompts import VoicePromptInfo, _from_catalog_record
+
+    if isinstance(source, VoicePromptInfo):
+        expected = source
+        ref = source.ref
+    elif isinstance(source, str):
+        expected = None
+        ref = source
+    else:
+        raise TypeError("source must be a prompt reference or VoicePromptInfo")
+
+    manager = _voice_prompt_manager(
+        cache_dir=cache_dir,
+        catalog_path=catalog_path,
+        offline=offline,
+    )
+    record = _call(
+        "voice_prompt_inspect",
+        lambda: manager.resolve_pocket_voice_prompt(ref, refresh=refresh),
+    )
+    info = _from_catalog_record(record)
+    if expected is not None and info != expected:
+        raise VoicePromptChangedError(
+            ref=ref,
+            expected_sha256=expected.sha256,
+            actual_sha256=info.sha256,
+            expected_revision=expected.source_revision,
+            actual_revision=info.source_revision,
+        )
+
+    fetch_kwargs: dict[str, Any] = {"progress": adapt_asset_progress(progress)}
+    path = _call(
+        "voice_prompt_fetch",
+        lambda: manager.fetch_pocket_voice_prompt(ref, **fetch_kwargs),
+    )
+    return ResolvedVoicePrompt(
+        ref=info.ref,
+        path=Path(path),
+        source_repository=info.source_repository,
+        source_revision=info.source_revision,
+        source_path=info.source_path,
+        size=info.size,
+        sha256=info.sha256,
+        license=info.license,
+        dataset=info.dataset,
+        variant=info.variant,
+    )
+
+
 def resolve_voice_prompt(
     ref: str,
     *,
@@ -261,27 +411,12 @@ def resolve_voice_prompt(
     offline: bool = False,
     progress: AssetProgressCallback | None = None,
 ) -> ResolvedVoicePrompt:
-    module = _onnxvoice()
-    manager = module.OnnxVoice(cache_dir=cache_dir, offline=offline)
-    prompt = _call(
-        "voice_prompt",
-        lambda: manager.resolve_pocket_voice_prompt(ref),
-    )
-    path = _call(
-        "voice_prompt",
-        lambda: manager.fetch_pocket_voice_prompt(ref, progress=adapt_asset_progress(progress)),
-    )
-    return ResolvedVoicePrompt(
-        ref=prompt.ref,
-        path=Path(path),
-        source_repository=prompt.source_repository,
-        source_revision=prompt.source_revision,
-        source_path=prompt.source_path,
-        size=prompt.size,
-        sha256=prompt.sha256,
-        license=prompt.license,
-        dataset=prompt.dataset,
-        variant=prompt.variant,
+    """Compatibility wrapper for current-identity managed prompt fetching."""
+    return fetch_voice_prompt(
+        ref,
+        cache_dir=cache_dir,
+        offline=offline,
+        progress=progress,
     )
 
 

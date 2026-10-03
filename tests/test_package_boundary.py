@@ -6,8 +6,6 @@ import subprocess
 import sys
 from pathlib import Path
 
-from pocketsynth._onnxvoice import _ONNXVOICE_MINIMUM_VERSION
-
 ROOT = Path(__file__).resolve().parents[1]
 PACKAGE = ROOT / "pocketsynth"
 FORBIDDEN_IMPORTS = {"utterplan", "ssmd", "audiocompose"}
@@ -53,8 +51,9 @@ FORBIDDEN_TERMS = (
 def test_strict_public_import_does_not_load_convenience_or_text_split() -> None:
     code = (
         "import sys; import pocketsynth; "
-        "from pocketsynth import PocketRuntime, SynthesisRequest; "
-        "assert PocketRuntime and SynthesisRequest; "
+        "from pocketsynth import PocketRuntime, SynthesisRequest, VoicePromptInfo, list_voice_prompts, inspect_voice_prompt, DiscoveredVoice, DiscoveredBundle, discover_bundles, runtime_identity; "
+        "assert all((PocketRuntime, SynthesisRequest, VoicePromptInfo, list_voice_prompts, inspect_voice_prompt, DiscoveredVoice, DiscoveredBundle, discover_bundles, runtime_identity)); "
+        "assert 'onnxvoice' not in sys.modules; "
         "assert 'pocketsynth.convenience' not in sys.modules; "
         "assert 'pocketsynth.text_split' not in sys.modules"
     )
@@ -85,6 +84,19 @@ def test_runtime_package_has_no_removed_architecture_terminology() -> None:
             assert re.search(rf"\b{re.escape(term)}\b", source) is None, (path, term)
 
 
+def test_cli_and_examples_do_not_import_private_onnxvoice_catalog_adapters() -> None:
+    paths = [PACKAGE / "__main__.py", *(ROOT / "examples").rglob("*.py")]
+    for path in paths:
+        tree = ast.parse(path.read_text(encoding="utf-8"), filename=str(path))
+        for node in ast.walk(tree):
+            if isinstance(node, ast.ImportFrom):
+                assert node.module != "pocketsynth._onnxvoice", path
+                if path.is_relative_to(ROOT / "examples"):
+                    assert node.module != "onnxvoice", path
+            if isinstance(node, ast.Attribute):
+                assert node.attr != "OnnxVoice", path
+
+
 def test_project_metadata_has_only_supported_engine_dependencies() -> None:
     metadata = (ROOT / "pyproject.toml").read_text(encoding="utf-8").casefold()
     assert all(name not in metadata for name in FORBIDDEN_IMPORTS)
@@ -93,7 +105,7 @@ def test_project_metadata_has_only_supported_engine_dependencies() -> None:
     assert '"onnxvoice[gpu,pocket]>=0.2.2,<0.3"' in metadata
     onnxvoice_minimums = re.findall(r'"onnxvoice(?:\[[^]]+\])?>=([^,<"]+)', metadata)
     assert onnxvoice_minimums
-    assert set(onnxvoice_minimums) == {_ONNXVOICE_MINIMUM_VERSION}
+    assert set(onnxvoice_minimums) == {"0.2.2"}
 
 
 def test_onnxvoice_compatibility_workflow_covers_supported_versions() -> None:

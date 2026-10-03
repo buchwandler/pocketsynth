@@ -150,7 +150,7 @@ def test_managed_bundle_catalog_voice_names_reach_runtime(tmp_path: Path) -> Non
     assert runtime._cache_dir == cache_dir
     assert runtime._offline is True
     assert runtime._progress is progress
-    with patch("pocketsynth.runtime.resolve_voice_prompt") as resolve_prompt:
+    with patch("pocketsynth.runtime.fetch_voice_prompt") as resolve_prompt:
         runtime._resolve_voice_prompt("kyutai-tts-voices:alba-mackenna/casual")
     resolve_prompt.assert_called_once_with(
         "kyutai-tts-voices:alba-mackenna/casual",
@@ -158,20 +158,29 @@ def test_managed_bundle_catalog_voice_names_reach_runtime(tmp_path: Path) -> Non
         offline=True,
         progress=progress,
     )
-    with patch(
-        "pocketsynth.runtime.list_pocket_voice_prompts", return_value=("prompt",)
-    ) as list_prompts:
+    with patch("pocketsynth.runtime.query_voice_prompts", return_value=("prompt",)) as list_prompts:
         assert runtime.list_voice_prompts(
             dataset="alba-mackenna", variant="casual", license="cc-by-4.0"
         ) == ("prompt",)
     list_prompts.assert_called_once_with(
         cache_dir=cache_dir,
         offline=True,
+        refresh=False,
         dataset="alba-mackenna",
         variant="casual",
         license="cc-by-4.0",
         progress=progress,
     )
+    with patch(
+        "pocketsynth.runtime.query_inspect_voice_prompt", return_value="prompt-info"
+    ) as inspect:
+        assert runtime.inspect_voice_prompt("kyutai-tts-voices:alba-mackenna/casual", refresh=True)
+        inspect.assert_called_once_with(
+            "kyutai-tts-voices:alba-mackenna/casual",
+            cache_dir=cache_dir,
+            offline=True,
+            refresh=True,
+        )
     assert runtime.predefined_voices == ("alba",)
     open_runtime.assert_called_once_with(
         resolved,
@@ -233,7 +242,7 @@ def test_resolve_voice_prompt_resolves_and_fetches_through_onnxvoice(
         source_revision="pinned-revision",
         source_path="alba-mackenna/casual.wav",
         size=1234,
-        sha256="prompt-sha256",
+        sha256="aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
         license="cc-by-4.0",
         dataset="alba-mackenna",
         variant="casual",
@@ -250,7 +259,7 @@ def test_resolve_voice_prompt_resolves_and_fetches_through_onnxvoice(
         resolved = resolve_voice_prompt(ref, cache_dir=cache_dir, offline=True, progress=progress)
 
     module.OnnxVoice.assert_called_once_with(cache_dir=cache_dir, offline=True)
-    manager.resolve_pocket_voice_prompt.assert_called_once_with(ref)
+    manager.resolve_pocket_voice_prompt.assert_called_once_with(ref, refresh=False)
     manager.fetch_pocket_voice_prompt.assert_called_once()
     assert manager.fetch_pocket_voice_prompt.call_args.args == (ref,)
     upstream_progress = manager.fetch_pocket_voice_prompt.call_args.kwargs["progress"]
@@ -265,7 +274,7 @@ def test_resolve_voice_prompt_resolves_and_fetches_through_onnxvoice(
         source_revision="pinned-revision",
         source_path="alba-mackenna/casual.wav",
         size=1234,
-        sha256="prompt-sha256",
+        sha256="aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
         license="cc-by-4.0",
         dataset="alba-mackenna",
         variant="casual",
