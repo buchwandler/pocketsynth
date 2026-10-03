@@ -1,0 +1,49 @@
+{
+  "candidate_count": 1,
+  "candidates": [
+    {
+      "additions": 1375,
+      "deletions": 137,
+      "patch_file": "d030901.patch",
+      "patch_sha256": "238b407da747180246ac0045979a2592a551f345c647f769250764356a36ef21",
+      "paths": [
+        ".ledger/releaseledger/data/ledgers/main/events/events.jsonl",
+        ".ledger/releaseledger/data/ledgers/main/releases/v0.2.2/entries/entry-0003.md",
+        ".ledger/releaseledger/data/ledgers/main/releases/v0.2.2/release.md",
+        "README.md",
+        "docs/architecture.md",
+        "docs/changelog.md",
+        "examples/README.md",
+        "examples/clone_all_kyutai_voices.py",
+        "examples/kyutai_voice.py",
+        "pocketsynth/__init__.py",
+        "pocketsynth/__main__.py",
+        "pocketsynth/_onnxvoice.py",
+        "pocketsynth/discovery.py",
+        "pocketsynth/errors.py",
+        "pocketsynth/runtime.py",
+        "pocketsynth/voice.py",
+        "pocketsynth/voice_prompts.py",
+        "tests/test_cli.py",
+        "tests/test_discovery.py",
+        "tests/test_examples.py",
+        "tests/test_onnxvoice_boundary.py",
+        "tests/test_package_boundary.py",
+        "tests/test_runtime_strict.py",
+        "tests/test_voice.py",
+        "tests/test_voice_prompts.py"
+      ],
+      "sha": "d030901884294fd61e8639e4a0c0cdea513cc748",
+      "short_sha": "d030901",
+      "source_ref": "git:d030901884294fd61e8639e4a0c0cdea513cc748"
+    }
+  ],
+  "git_base_ref": "0f9802f7eb36c1251698a13599e8194f04b3562c",
+  "git_base_sha": "0f9802f7eb36c1251698a13599e8194f04b3562c",
+  "git_head_ref": "d030901884294fd61e8639e4a0c0cdea513cc748",
+  "git_head_sha": "d030901884294fd61e8639e4a0c0cdea513cc748",
+  "include_merges": "nontrivial",
+  "object_type": "git_evidence_manifest",
+  "release_version": "v0.2.3",
+  "schema_version": 1
+}

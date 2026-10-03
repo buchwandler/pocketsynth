@@ -1,0 +1,2257 @@
+ .../data/ledgers/main/events/events.jsonl          |   1 +
+ .../main/releases/v0.2.2/entries/entry-0003.md     |  34 +++
+ .../data/ledgers/main/releases/v0.2.2/release.md   |   4 +-
+ README.md                                          |  33 ++-
+ docs/architecture.md                               |  13 +-
+ docs/changelog.md                                  |   1 +
+ examples/README.md                                 |   6 +-
+ examples/clone_all_kyutai_voices.py                |  19 +-
+ examples/kyutai_voice.py                           |  14 +-
+ pocketsynth/__init__.py                            |  13 +
+ pocketsynth/__main__.py                            |  54 ++--
+ pocketsynth/_onnxvoice.py                          | 169 ++++++++++--
+ pocketsynth/discovery.py                           | 141 ++++++++++
+ pocketsynth/errors.py                              |  28 ++
+ pocketsynth/runtime.py                             |  28 +-
+ pocketsynth/voice.py                               |  56 +++-
+ pocketsynth/voice_prompts.py                       | 121 ++++++++
+ tests/test_cli.py                                  |  73 +++--
+ tests/test_discovery.py                            | 177 ++++++++++++
+ tests/test_examples.py                             |  63 ++++-
+ tests/test_onnxvoice_boundary.py                   |  23 +-
+ tests/test_package_boundary.py                     |  22 +-
+ tests/test_runtime_strict.py                       |  37 +++
+ tests/test_voice.py                                |  76 ++++-
+ tests/test_voice_prompts.py                        | 306 +++++++++++++++++++++
+ 25 files changed, 1375 insertions(+), 137 deletions(-)
+
+diff --git a/.ledger/releaseledger/data/ledgers/main/events/events.jsonl b/.ledger/releaseledger/data/ledgers/main/events/events.jsonl
+index 9c5d95b..d7f9c7b 100644
+--- a/.ledger/releaseledger/data/ledgers/main/events/events.jsonl
++++ b/.ledger/releaseledger/data/ledgers/main/events/events.jsonl
+@@ -32,3 +32,4 @@
+ {"data":{"updated_rows":2},"event":"audit.updated","event_id":"event-0032","record_revisions":{"commit_audit_sheet":2},"release_version":"v0.2.2","schema_version":2}
+ {"data":{"entry_ids":["entry-0001","entry-0002"],"synced_audit_rows":2},"event":"entry.batch_added","event_id":"event-0033","record_revisions":{"commit_audit_sheet":3,"entry:v0.2.2/entry-0001":1,"entry:v0.2.2/entry-0002":1,"release:v0.2.2":3},"release_version":"v0.2.2","schema_version":2}
+ {"data":{"released_at":"2026-10-01"},"event":"release.finalized","event_id":"event-0034","record_revisions":{"release:v0.2.1":4},"release_version":"v0.2.1","schema_version":2}
++{"data":{"kind":"added","status":"accepted"},"entry_id":"entry-0003","event":"entry.added","event_id":"event-0035","record_revisions":{"entry:v0.2.2/entry-0003":1,"release:v0.2.2":4},"release_version":"v0.2.2","schema_version":2}
+diff --git a/.ledger/releaseledger/data/ledgers/main/releases/v0.2.2/entries/entry-0003.md b/.ledger/releaseledger/data/ledgers/main/releases/v0.2.2/entries/entry-0003.md
+new file mode 100644
+index 0000000..58db8df
+--- /dev/null
++++ b/.ledger/releaseledger/data/ledgers/main/releases/v0.2.2/entries/entry-0003.md
+@@ -0,0 +1,34 @@
++---
++schema_version: 2
++object_type: release_entry
++versioning:
++  schema_version: 1
++  revision: 1
++entry_id: entry-0003
++release_version: v0.2.2
++kind: added
++summary: Added typed metadata-only voice discovery and pinned managed prompt preparation
++status: accepted
++audience: null
++scopes: []
++source_refs:
++  - tl:task-0012
++paths:
++  - pocketsynth/voice_prompts.py
++  - pocketsynth/discovery.py
++  - pocketsynth/voice.py
++  - pocketsynth/runtime.py
++  - pocketsynth/__init__.py
++  - README.md
++  - docs/architecture.md
++  - examples/kyutai_voice.py
++issues: []
++prs: []
++sources: []
++contributors: []
++breaking: false
++internal: false
++order: 3
++---
++
++Public prompt inspection and bundle discovery return PocketSynth-owned metadata without fetching WAV payloads, installing bundles, or opening a runtime. VoicePromptInfo pins the catalog SHA-256 and prompt revision; pinned preparation verifies the current identity before fetching and keeps prompt provenance distinct from bundle revision and the normalized prepared-audio fingerprint. OnnxVoice continues to own catalog access, cache/download integrity, and runtime primitives, with the supported minimum remaining 0.2.2.
+diff --git a/.ledger/releaseledger/data/ledgers/main/releases/v0.2.2/release.md b/.ledger/releaseledger/data/ledgers/main/releases/v0.2.2/release.md
+index 20dd25b..c05f2f2 100644
+--- a/.ledger/releaseledger/data/ledgers/main/releases/v0.2.2/release.md
++++ b/.ledger/releaseledger/data/ledgers/main/releases/v0.2.2/release.md
+@@ -3,7 +3,7 @@ schema_version: 2
+ object_type: release
+ versioning:
+   schema_version: 1
+-  revision: 3
++  revision: 4
+ version: v0.2.2
+ status: planned
+ history_state: curated
+@@ -16,7 +16,7 @@ changelog_file: null
+ boundary_ref: null
+ source_refs: []
+ source_count: null
+-entry_count: 2
++entry_count: 3
+ artifact_count: 0
+ git_base_ref: v0.2.1
+ git_base_sha: 2a7fffca1584d1a991642c73fe1de7d78d95606b
+diff --git a/README.md b/README.md
+index 7e1afa3..434b4fc 100644
+--- a/README.md
++++ b/README.md
+@@ -19,7 +19,7 @@ python -m pip install 'pocketsynth[cpu]'
+
+ The `gpu` extra selects OnnxVoice's GPU runtime. `playback` adds `sounddevice` for `RenderedSegment.play()`.
+
+-Managed Kyutai prompt support uses the OnnxVoice 0.2.2 prompt catalog and cache API; the package dependency installs this minimum automatically.
++Managed Kyutai prompt support uses the OnnxVoice prompt catalog and cache API. The supported dependency range remains `onnxvoice>=0.2.2,<0.3`; installation extras select the desired runtime backend.
+
+ ## Direct engine use
+
+@@ -82,9 +82,11 @@ An explicit request language is a compatibility assertion against the active bun
+
+ Pocket bundles and voice conditioning are separate. `prepare_voice()` accepts bundle-declared predefined names, local PCM WAV paths, `Path` objects, in-memory `(audio, sample_rate)` tuples, existing `PreparedVoice` objects, and managed `kyutai-tts-voices:<id>` references. Reference WAVs support uncompressed PCM 8-, 16-, 24-, and 32-bit mono or multichannel audio; multichannel input is downmixed and audio is resampled to the bundle rate before OnnxVoice encodes it.
+
+-`PreparedVoice` can be reused for many requests on a compatible runtime. A reference voice's fingerprint identifies normalized audio and sample rate, while its metadata retains managed source provenance and license. OnnxVoice 0.2.2 owns Kyutai prompt discovery, pinned downloads, cache integrity, and offline behavior. PocketSynth does not download prompt assets itself. Predefined voice states remain separate assets and may require accepting upstream access terms and authenticating with Hugging Face.
++`PreparedVoice` can be reused for many requests on a compatible runtime. For a local reference, `fingerprint` identifies normalized audio and sample rate. For a managed prompt, `voice_prompt` carries typed catalog provenance, while `bundle_revision` identifies the model bundle. A managed identity keeps the catalog asset SHA-256 (`source_sha256`) separate from the normalized prepared-audio fingerprint (`prepared_sha256`).
+
+-Managed references are resolved and cached by OnnxVoice, so no WAV download step is needed:
++OnnxVoice 0.2.2 owns prompt catalogs, prompt WAV fetching, cache integrity, and offline behavior. PocketSynth delegates managed audio fetching to OnnxVoice during `prepare_voice()`; metadata discovery does not fetch audio or open a model. Predefined voice states are separate assets and may require accepting upstream access terms and authenticating with Hugging Face.
++
++The simple managed workflow uses the current catalog identity for a reference:
+
+ ```python
+ from pocketsynth import PocketRuntime
+@@ -95,7 +97,30 @@ with PocketRuntime.from_pretrained("english_2026-04") as runtime:
+     result.save_wav("example-artifacts/kyutai-casual.wav")
+ ```
+
+-Discover prompts without downloading their audio with `runtime.list_voice_prompts()` or `pocketsynth voices list`. The CLI supports `--dataset`, `--variant`, `--license`, and `--offline` filters.
++For reproducible orchestration, inspect and retain a `VoicePromptInfo` before opening the runtime. Inspection is metadata-only. Passing that record to `prepare_voice()` checks its prompt reference, catalog SHA-256, and source revision against the current catalog before fetching audio; a changed identity raises `VoicePromptChangedError`.
++
++```python
++from pocketsynth import PocketRuntime, inspect_voice_prompt
++
++prompt = inspect_voice_prompt("kyutai-tts-voices:alba-mackenna/casual")
++# Persist prompt.ref, prompt.sha256, and prompt.source_revision with the render plan.
++
++with PocketRuntime.from_pretrained("english_2026-04") as runtime:
++    voice = runtime.prepare_voice(prompt)
++    assert voice.voice_prompt == prompt
++    identity = voice.identity
++    # identity['source_sha256'] is the catalog WAV hash.
++    # identity['prepared_sha256'] is the normalized audio fingerprint.
++```
++
++`list_voice_prompts()` and `inspect_voice_prompt()` return typed prompt metadata without requiring a runtime, installing a bundle, or fetching WAVs. `discover_bundles()` similarly returns PocketSynth-owned `DiscoveredBundle` and `DiscoveredVoice` records without installing or opening a bundle. `runtime_identity(bundle)` reports PocketSynth and OnnxVoice versions and the bundle revision without opening a model; OnnxVoice 0.2.2 does not expose a separate catalog revision, so `catalog_revision` is `None`. The discovery APIs accept explicit `offline` and `refresh` options; `runtime_identity()` only reads installed package metadata. The runtime list/inspect wrappers remain available, but standalone functions are the metadata-discovery entry points.
++
++The CLI supports metadata-only prompt listing and direct prompt inspection. Filters include `--dataset`, `--variant`, `--license`, and `--offline`:
++
++```bash
++pocketsynth voices list --dataset alba-mackenna
++pocketsynth check --offline --voice kyutai-tts-voices:alba-mackenna/casual
++```
+
+ To inspect dependencies, providers, bundle metadata, and voice format:
+
+diff --git a/docs/architecture.md b/docs/architecture.md
+index 64a2e10..42c758e 100644
+--- a/docs/architecture.md
++++ b/docs/architecture.md
+@@ -71,8 +71,19 @@ An explicit request language is a compatibility assertion against the active bun
+
+ ## Voice conditioning
+
+-`PreparedVoice` is reusable conditioning state for a compatible bundle and source revision. Reference WAV data is validated as mono PCM16, resampled to the bundle rate, and encoded by OnnxVoice. Its stable identity is based on normalized accepted audio and sample rate. A predefined voice identity includes bundle ID, voice name, and source revision when available.
++`PreparedVoice` is reusable conditioning state for a compatible bundle and source revision. Reference WAV data is validated as uncompressed PCM, downmixed to mono when multichannel, resampled to the bundle rate, and encoded by OnnxVoice. Its stable identity is based on normalized accepted audio and sample rate. A predefined voice identity includes bundle ID, voice name, and source revision when available.
+
++### Metadata-only discovery and pinned managed voices
++
++`list_voice_prompts()` and `inspect_voice_prompt(ref)` are standalone public APIs returning PocketSynth-owned `VoicePromptInfo` records. They use OnnxVoice catalog metadata. `list_voice_prompts()` supports cache and catalog paths, offline and refresh modes, dataset/variant/license filters, and progress callbacks. `inspect_voice_prompt()` supports cache and catalog paths plus offline and refresh modes. They do not require a `PocketRuntime`, install a bundle, open an ONNX session, or fetch prompt WAVs. `discover_bundles()` returns `DiscoveredBundle` and `DiscoveredVoice` records, accepts language and cache/catalog/offline/refresh/progress options, and does not install or open a bundle. `BundleAssetManager` remains available for advanced installation and resolution; the DTO discovery functions are the stable metadata boundary.
++
++`VoicePromptInfo.sha256` and `source_revision` identify the catalog prompt artifact. `PocketRuntime.prepare_voice(ref)` keeps the convenient current-catalog behavior. `PocketRuntime.prepare_voice(info)` first re-inspects the reference and compares the pinned catalog identity before fetching audio. A changed reference raises `VoicePromptChangedError` instead of silently preparing a newer prompt. OnnxVoice remains responsible for fetching the WAV, cache integrity, and offline asset errors.
++
++A managed `PreparedVoice` exposes its typed `voice_prompt`; its `source_revision` and `bundle_revision` refer to the active Pocket bundle, not the prompt. Its `identity` has kind `managed_reference`, with `source_sha256` for the catalog WAV and `prepared_sha256` for the normalized float32 audio fingerprint after decoding, downmixing, resampling, and normalization. These hashes are deliberately distinct. Local reference and predefined voice identities keep their existing semantics.
++
++`runtime_identity(bundle=None)` reports PocketSynth's `engine_version`, the installed OnnxVoice `runtime_revision`, an optional `catalog_revision`, and the selected `bundle_revision`. It reads package metadata only and does not open a model. OnnxVoice 0.2.2 exposes bundle revisions but no separate catalog revision, so PocketSynth returns `catalog_revision=None` rather than inventing one. The supported dependency range remains `onnxvoice>=0.2.2,<0.3`.
++
++The basic workflow prepares the current catalog entry; the pinned workflow inspects metadata before opening a runtime and then passes that record to `prepare_voice()`. Prompt inspection and fetching are separate stages.
+ Voice-level configuration can leave audio unchanged, apply a catalog calibration, or explicitly override gain. Missing calibration is reported in metadata; PocketSynth does not invent measurements or measure loudness per request.
+
+ ## Generation and results
+diff --git a/docs/changelog.md b/docs/changelog.md
+index de104b0..7ccccd2 100644
+--- a/docs/changelog.md
++++ b/docs/changelog.md
+@@ -9,6 +9,7 @@
+ ### Added
+
+ - Added managed Kyutai voice prompt discovery and synthesis through the runtime and CLI
++- Added typed metadata-only voice discovery and pinned managed prompt preparation
+
+ ### Fixed
+
+diff --git a/examples/README.md b/examples/README.md
+index d4cb393..da7a9d9 100644
+--- a/examples/README.md
++++ b/examples/README.md
+@@ -34,13 +34,15 @@ The script writes `example-artifacts/predefined_voice_alba.wav`. The bundle's `p
+
+ ## Managed Kyutai reference voices
+
+-`kyutai_voice.py` clones a pinned Kyutai reference without a manual WAV download:
++`kyutai_voice.py` demonstrates the simple current-reference workflow without a manual WAV download. Add `--pin-prompt` to inspect and retain catalog metadata first, then prepare exactly that identity:
+
+ ```bash
+ python examples/kyutai_voice.py
++python examples/kyutai_voice.py --pin-prompt \
++  --output example-artifacts/kyutai-casual-pinned.wav
+ ```
+
+-It defaults to `kyutai-tts-voices:alba-mackenna/casual`. After its bundle and prompt are cached, run with `--offline` to reuse them without network access. The CLI accepts the same managed reference:
++The default prepares the current catalog identity for `kyutai-tts-voices:alba-mackenna/casual`. `--pin-prompt` calls `inspect_voice_prompt()` before opening the runtime, then passes the resulting `VoicePromptInfo` to `prepare_voice()`. Inspection reads metadata only. Pinned preparation verifies the source SHA-256 and prompt revision before OnnxVoice fetches the WAV; a changed prompt raises `VoicePromptChangedError`. `PreparedVoice.voice_prompt` retains prompt provenance, while `bundle_revision` remains the model revision. The catalog WAV SHA and normalized prepared-audio fingerprint are distinct. After the bundle and prompt are cached, run either mode with `--offline` to reuse them without network access. The CLI accepts the same managed reference:
+
+ ```bash
+ pocketsynth synthesize \
+diff --git a/examples/clone_all_kyutai_voices.py b/examples/clone_all_kyutai_voices.py
+index e8c0f5d..f605480 100644
+--- a/examples/clone_all_kyutai_voices.py
++++ b/examples/clone_all_kyutai_voices.py
+@@ -11,9 +11,8 @@ try:
+     from _output import artifact_path
+ except ModuleNotFoundError:  # imported as examples.clone_all_kyutai_voices
+     from examples._output import artifact_path
+-from onnxvoice import OnnxVoice
+
+-from pocketsynth import PocketRuntime
++from pocketsynth import PocketRuntime, list_voice_prompts
+
+ DEFAULT_BUNDLE = "english_2026-04"
+ DEFAULT_TEXT = "Hello. This is a PocketSynth voice-cloning sample."
+@@ -73,8 +72,12 @@ def main(argv: list[str] | None = None) -> int:
+     args = parser.parse_args(argv)
+     args.output_dir = args.output_dir or artifact_path("kyutai-voices")
+
+-    catalog = OnnxVoice(cache_dir=args.cache_dir, offline=args.offline)
+-    prompts = catalog.list_pocket_voice_prompts(dataset=args.dataset, variant=args.variant)
++    prompts = list_voice_prompts(
++        cache_dir=args.cache_dir,
++        offline=args.offline,
++        dataset=args.dataset,
++        variant=args.variant,
++    )
+     if args.exclude_noncommercial:
+         prompts = tuple(prompt for prompt in prompts if not _is_noncommercial(prompt.license))
+     if args.limit is not None:
+@@ -84,7 +87,9 @@ def main(argv: list[str] | None = None) -> int:
+     rows: list[dict[str, str]] = []
+     if args.dry_run:
+         for prompt in prompts:
+-            destination = args.output_dir / safe_output_name(prompt.id)
++            destination = args.output_dir / safe_output_name(
++                prompt.ref.removeprefix("kyutai-tts-voices:")
++            )
+             rows.append(
+                 {
+                     "ref": prompt.ref,
+@@ -102,7 +107,9 @@ def main(argv: list[str] | None = None) -> int:
+             args.bundle, cache_dir=args.cache_dir, offline=args.offline
+         ) as runtime:
+             for index, prompt in enumerate(prompts, start=1):
+-                destination = args.output_dir / safe_output_name(prompt.id)
++                destination = args.output_dir / safe_output_name(
++                    prompt.ref.removeprefix("kyutai-tts-voices:")
++                )
+                 row = {
+                     "ref": prompt.ref,
+                     "source_path": prompt.source_path,
+diff --git a/examples/kyutai_voice.py b/examples/kyutai_voice.py
+index 43d8956..ffa84f9 100644
+--- a/examples/kyutai_voice.py
++++ b/examples/kyutai_voice.py
+@@ -10,7 +10,7 @@ try:
+     from _output import artifact_path
+ except ModuleNotFoundError:  # imported as examples.kyutai_voice
+     from examples._output import artifact_path
+-from pocketsynth import PocketRuntime
++from pocketsynth import PocketRuntime, inspect_voice_prompt
+
+ DEFAULT_BUNDLE = os.environ.get("POCKETSYNTH_EXAMPLE_BUNDLE", "english_2026-04")
+ DEFAULT_REF = "kyutai-tts-voices:alba-mackenna/casual"
+@@ -23,6 +23,11 @@ def main(argv: list[str] | None = None) -> int:
+     parser.add_argument(
+         "--voice", default=DEFAULT_REF, help=f"managed reference (default: {DEFAULT_REF})"
+     )
++    parser.add_argument(
++        "--pin-prompt",
++        action="store_true",
++        help="inspect current catalog metadata and pin its identity before fetching audio",
++    )
+     parser.add_argument("--text", default=TEXT)
+     parser.add_argument("--output", type=Path)
+     parser.add_argument("--cache-dir", type=Path)
+@@ -34,11 +39,16 @@ def main(argv: list[str] | None = None) -> int:
+     )
+     args = parser.parse_args(argv)
+     output = args.output or artifact_path("kyutai_casual.wav")
++    voice_source = args.voice
++    if args.pin_prompt:
++        voice_source = inspect_voice_prompt(
++            args.voice, cache_dir=args.cache_dir, offline=args.offline
++        )
+
+     with PocketRuntime.from_pretrained(
+         args.bundle, cache_dir=args.cache_dir, offline=args.offline
+     ) as runtime:
+-        voice = runtime.prepare_voice(args.voice)
++        voice = runtime.prepare_voice(voice_source)
+         audio = runtime.synthesize_text(args.text, voice=voice)
+         audio.save_wav(output)
+     print(f"WAV: {output}")
+diff --git a/pocketsynth/__init__.py b/pocketsynth/__init__.py
+index 3c83b8b..61ee77a 100644
+--- a/pocketsynth/__init__.py
++++ b/pocketsynth/__init__.py
+@@ -16,6 +16,7 @@ from .assets import PocketBundle
+ from .bundle import BundleMetadata, BundlePaths
+ from .config import GenerationConfig
+ from .diagnostics import RuntimeDiagnostics, SynthesisTiming
++from .discovery import DiscoveredBundle, DiscoveredVoice, discover_bundles, runtime_identity
+ from .errors import (
+     BundleError,
+     BundleLanguageError,
+@@ -25,6 +26,7 @@ from .errors import (
+     InvalidLanguageError,
+     InvalidRequestError,
+     InvalidVoiceError,
++    InvalidVoicePromptMetadataError,
+     ModelInferenceError,
+     OptionalDependencyError,
+     PocketSynthError,
+@@ -33,6 +35,7 @@ from .errors import (
+     SynthesisInputTooLongError,
+     UnsupportedBundleError,
+     UnsupportedFeatureError,
++    VoicePromptChangedError,
+     VoicePromptError,
+ )
+ from .runtime import PocketRuntime
+@@ -53,6 +56,7 @@ from .voice_level import (
+     VoiceLevelMode,
+     VoiceLevelSource,
+ )
++from .voice_prompts import VoicePromptInfo, inspect_voice_prompt, list_voice_prompts
+
+ __all__ = [
+     "AssetProgressCallback",
+@@ -64,12 +68,15 @@ __all__ = [
+     "BundleNotFoundError",
+     "BundlePaths",
+     "ConsoleAssetProgress",
++    "DiscoveredBundle",
++    "DiscoveredVoice",
+     "EmptyTextError",
+     "GenerationConfig",
+     "InvalidGenerationConfigError",
+     "InvalidLanguageError",
+     "InvalidRequestError",
+     "InvalidVoiceError",
++    "InvalidVoicePromptMetadataError",
+     "LinguisticToken",
+     "ModelInferenceError",
+     "OptionalDependencyError",
+@@ -94,6 +101,12 @@ __all__ = [
+     "VoiceLevelConfig",
+     "VoiceLevelMode",
+     "VoiceLevelSource",
++    "VoicePromptChangedError",
+     "VoicePromptError",
++    "VoicePromptInfo",
++    "discover_bundles",
++    "inspect_voice_prompt",
++    "list_voice_prompts",
++    "runtime_identity",
+     "WordTiming",
+ ]
+diff --git a/pocketsynth/__main__.py b/pocketsynth/__main__.py
+index 5d894b7..50e26ea 100644
+--- a/pocketsynth/__main__.py
++++ b/pocketsynth/__main__.py
+@@ -6,14 +6,18 @@ from importlib import import_module
+ from pathlib import Path
+ from typing import Any
+
+-from . import PocketRuntime, __version__
+-from ._onnxvoice import list_voice_prompts as query_voice_prompts
+-from ._onnxvoice import normalize_pocket_ref
++from . import (
++    PocketRuntime,
++    __version__,
++    discover_bundles,
++    inspect_voice_prompt,
++    list_voice_prompts,
++)
+ from .bundle import BundlePaths
+ from .config import GenerationConfig
+ from .convenience import synthesize_with_runtime
+ from .errors import PocketSynthError
+-from .voice import _is_managed_voice_prompt_ref, _looks_like_path_string, _read_pcm_wav
++from .voice import _looks_like_path_string, _read_pcm_wav
+
+
+ def _providers(values: list[str] | None) -> str | list[str] | None:
+@@ -79,7 +83,7 @@ def _synthesize(args: argparse.Namespace) -> int:
+
+ def _voices_list(args: argparse.Namespace) -> int:
+     try:
+-        prompts = query_voice_prompts(
++        prompts = list_voice_prompts(
+             cache_dir=args.cache_dir,
+             offline=args.offline,
+             dataset=args.dataset,
+@@ -134,31 +138,33 @@ def _check(args: argparse.Namespace) -> int:
+             print(f"FAIL local bundle: {exc}")
+             failures += 1
+     elif args.bundle:
+-        if onnxvoice is None:
+-            failures += 1
+-        else:
+-            try:
+-                manager = onnxvoice.OnnxVoice(cache_dir=args.cache_dir, offline=args.offline)
+-                item = manager.catalog.resolve(
+-                    normalize_pocket_ref(args.bundle), quality=args.precision
++        try:
++            bundles = discover_bundles(cache_dir=args.cache_dir, offline=args.offline)
++            bundle = next(
++                (item for item in bundles if args.bundle in (item.id, item.ref, *item.aliases)),
++                None,
++            )
++            if bundle is None:
++                raise ValueError(f"Unknown Pocket bundle {args.bundle!r}")
++            if args.precision not in bundle.precisions:
++                raise ValueError(
++                    f"Bundle {bundle.id!r} does not provide precision {args.precision!r}"
+                 )
+-                available_voices = tuple(item.metadata.get("predefined_voice_names") or ())
+-                print(f"Catalog: OK ({args.bundle})")
+-            except Exception as exc:
+-                print(f"FAIL catalog bundle {args.bundle!r}: {exc}")
+-                failures += 1
++            available_voices = bundle.predefined_voices
++            print(f"Catalog: OK ({bundle.ref})")
++        except Exception as exc:
++            print(f"FAIL catalog bundle {args.bundle!r}: {exc}")
++            failures += 1
+     else:
+         print("Bundle: not checked (pass --bundle or --bundle-dir)")
+
+     if args.voice:
+-        if _is_managed_voice_prompt_ref(args.voice):
++        if args.voice.startswith("kyutai-tts-voices:"):
+             try:
+-                prompts = query_voice_prompts(cache_dir=args.cache_dir, offline=args.offline)
+-                if any(prompt.ref == args.voice for prompt in prompts):
+-                    print(f"Managed voice prompt: OK ({args.voice})")
+-                else:
+-                    print(f"FAIL unknown managed voice prompt {args.voice!r}")
+-                    failures += 1
++                prompt = inspect_voice_prompt(
++                    args.voice, cache_dir=args.cache_dir, offline=args.offline
++                )
++                print(f"Managed voice prompt: OK ({prompt.ref})")
+             except Exception as exc:
+                 print(f"FAIL managed voice prompt {args.voice!r}: {exc}")
+                 failures += 1
+diff --git a/pocketsynth/_onnxvoice.py b/pocketsynth/_onnxvoice.py
+index 7719842..8039a2d 100644
+--- a/pocketsynth/_onnxvoice.py
++++ b/pocketsynth/_onnxvoice.py
+@@ -20,6 +20,7 @@ from .errors import (
+     RuntimeCapabilityError,
+     SessionCreationError,
+     UnsupportedBundleError,
++    VoicePromptChangedError,
+     VoicePromptError,
+ )
+
+@@ -254,34 +255,168 @@ def open_installed_bundle(
+     )
+
+
+-def resolve_voice_prompt(
++def list_pocket_bundles(
++    *,
++    language: str | None = None,
++    cache_dir: str | Path | None = None,
++    catalog_path: str | Path | None = None,
++    offline: bool = False,
++    refresh: bool = False,
++    progress: AssetProgressCallback | None = None,
++) -> tuple[Any, ...]:
++    """Query Pocket catalog metadata without installing a bundle or opening a runtime."""
++    module = _onnxvoice()
++    kwargs: dict[str, Any] = {"cache_dir": cache_dir, "offline": offline}
++    if catalog_path is not None:
++        kwargs["catalog_sources"] = {"pocket": str(catalog_path)}
++    manager = module.OnnxVoice(**kwargs)
++    return tuple(
++        _call(
++            "bundle_discover",
++            lambda: manager.list(
++                "pocket",
++                language=language,
++                refresh=refresh,
++                progress=adapt_asset_progress(progress),
++            ),
++        )
++    )
++
++
++def _voice_prompt_manager(
++    *,
++    cache_dir: str | Path | None,
++    catalog_path: str | Path | None,
++    offline: bool,
++) -> Any:
++    module = _onnxvoice()
++    kwargs: dict[str, Any] = {"cache_dir": cache_dir, "offline": offline}
++    if catalog_path is not None:
++        kwargs["catalog_sources"] = {"pocket_voice_prompts": str(catalog_path)}
++    return module.OnnxVoice(**kwargs)
++
++
++def inspect_voice_prompt_metadata(
+     ref: str,
+     *,
+     cache_dir: str | Path | None = None,
++    catalog_path: str | Path | None = None,
++    offline: bool = False,
++    refresh: bool = False,
++) -> Any:
++    """Resolve prompt catalog metadata without fetching its WAV payload."""
++    manager = _voice_prompt_manager(
++        cache_dir=cache_dir,
++        catalog_path=catalog_path,
++        offline=offline,
++    )
++    return _call(
++        "voice_prompt_inspect",
++        lambda: manager.resolve_pocket_voice_prompt(ref, refresh=refresh),
++    )
++
++
++def list_voice_prompt_metadata(
++    *,
++    cache_dir: str | Path | None = None,
++    catalog_path: str | Path | None = None,
++    offline: bool = False,
++    refresh: bool = False,
++    dataset: str | None = None,
++    variant: str | None = None,
++    license: str | None = None,
++    progress: AssetProgressCallback | None = None,
++) -> tuple[Any, ...]:
++    """List prompt catalog metadata without fetching WAV payloads."""
++    manager = _voice_prompt_manager(
++        cache_dir=cache_dir,
++        catalog_path=catalog_path,
++        offline=offline,
++    )
++    return _call(
++        "voice_prompt_list",
++        lambda: manager.list_pocket_voice_prompts(
++            dataset=dataset,
++            variant=variant,
++            license=license,
++            refresh=refresh,
++            progress=adapt_asset_progress(progress),
++        ),
++    )
++
++
++def fetch_voice_prompt(
++    source: Any,
++    *,
++    cache_dir: str | Path | None = None,
++    catalog_path: str | Path | None = None,
+     offline: bool = False,
++    refresh: bool = False,
+     progress: AssetProgressCallback | None = None,
+ ) -> ResolvedVoicePrompt:
+-    module = _onnxvoice()
+-    manager = module.OnnxVoice(cache_dir=cache_dir, offline=offline)
+-    prompt = _call(
+-        "voice_prompt",
+-        lambda: manager.resolve_pocket_voice_prompt(ref),
++    """Resolve, verify, and fetch a managed prompt for runtime preparation."""
++    from .voice_prompts import VoicePromptInfo, _from_catalog_record
++
++    if isinstance(source, VoicePromptInfo):
++        expected = source
++        ref = source.ref
++    elif isinstance(source, str):
++        expected = None
++        ref = source
++    else:
++        raise TypeError("source must be a prompt reference or VoicePromptInfo")
++
++    manager = _voice_prompt_manager(
++        cache_dir=cache_dir,
++        catalog_path=catalog_path,
++        offline=offline,
+     )
++    record = _call(
++        "voice_prompt_inspect",
++        lambda: manager.resolve_pocket_voice_prompt(ref, refresh=refresh),
++    )
++    info = _from_catalog_record(record)
++    if expected is not None and info != expected:
++        raise VoicePromptChangedError(
++            ref=ref,
++            expected_sha256=expected.sha256,
++            actual_sha256=info.sha256,
++            expected_revision=expected.source_revision,
++            actual_revision=info.source_revision,
++        )
++
++    fetch_kwargs: dict[str, Any] = {"progress": adapt_asset_progress(progress)}
+     path = _call(
+-        "voice_prompt",
+-        lambda: manager.fetch_pocket_voice_prompt(ref, progress=adapt_asset_progress(progress)),
++        "voice_prompt_fetch",
++        lambda: manager.fetch_pocket_voice_prompt(ref, **fetch_kwargs),
+     )
+     return ResolvedVoicePrompt(
+-        ref=prompt.ref,
++        ref=info.ref,
+         path=Path(path),
+-        source_repository=prompt.source_repository,
+-        source_revision=prompt.source_revision,
+-        source_path=prompt.source_path,
+-        size=prompt.size,
+-        sha256=prompt.sha256,
+-        license=prompt.license,
+-        dataset=prompt.dataset,
+-        variant=prompt.variant,
++        source_repository=info.source_repository,
++        source_revision=info.source_revision,
++        source_path=info.source_path,
++        size=info.size,
++        sha256=info.sha256,
++        license=info.license,
++        dataset=info.dataset,
++        variant=info.variant,
++    )
++
++
++def resolve_voice_prompt(
++    ref: str,
++    *,
++    cache_dir: str | Path | None = None,
++    offline: bool = False,
++    progress: AssetProgressCallback | None = None,
++) -> ResolvedVoicePrompt:
++    """Compatibility wrapper for current-identity managed prompt fetching."""
++    return fetch_voice_prompt(
++        ref,
++        cache_dir=cache_dir,
++        offline=offline,
++        progress=progress,
+     )
+
+
+diff --git a/pocketsynth/discovery.py b/pocketsynth/discovery.py
+new file mode 100644
+index 0000000..e8de7a6
+--- /dev/null
++++ b/pocketsynth/discovery.py
+@@ -0,0 +1,141 @@
++from __future__ import annotations
++
++from collections.abc import Mapping, Sequence
++from dataclasses import dataclass, field
++from importlib.metadata import version
++from pathlib import Path
++from typing import Any
++
++from ._onnxvoice import list_pocket_bundles
++from .asset_progress import AssetProgressCallback
++from .assets import PocketBundle
++
++
++@dataclass(frozen=True, slots=True)
++class DiscoveredVoice:
++    """Catalog metadata for a predefined voice declared by a Pocket bundle."""
++
++    id: str
++    gender: str = "unknown"
++    language: str = "unknown"
++    locale: str = "unknown"
++    language_label: str = "unknown"
++
++
++@dataclass(frozen=True, slots=True)
++class DiscoveredBundle:
++    """PocketSynth-owned metadata for a cataloged Pocket bundle."""
++
++    id: str
++    ref: str
++    display_name: str
++    aliases: tuple[str, ...]
++    language: str
++    sample_rate: int | None
++    precisions: tuple[str, ...]
++    predefined_voices: tuple[str, ...]
++    default_voice: str | None
++    source_revision: str | None
++    max_tokens: int | None
++    voice_details: tuple[DiscoveredVoice, ...] = ()
++    metadata: Mapping[str, Any] = field(default_factory=dict)
++
++
++def _voice_details(metadata: Mapping[str, Any]) -> tuple[DiscoveredVoice, ...]:
++    raw_details = metadata.get("voice_details", ())
++    if not isinstance(raw_details, Sequence) or isinstance(raw_details, (str, bytes)):
++        return ()
++    return tuple(
++        DiscoveredVoice(
++            id=detail["id"],
++            gender=detail.get("gender") or "unknown",
++            language=detail.get("language") or "unknown",
++            locale=detail.get("locale") or "unknown",
++            language_label=detail.get("language_label") or "unknown",
++        )
++        for detail in raw_details
++        if isinstance(detail, Mapping) and isinstance(detail.get("id"), str)
++    )
++
++
++def _from_catalog_item(item: Any) -> DiscoveredBundle:
++    metadata = dict(item.metadata or {})
++    profiles = metadata.get("profiles")
++    precisions = (
++        {quality for quality in profiles if isinstance(quality, str)}
++        if isinstance(profiles, Mapping)
++        else set()
++    )
++    precisions.update(
++        quality
++        for artifact in item.artifacts
++        if isinstance((quality := artifact.quality), str) and quality
++    )
++    raw_voices = metadata.get("predefined_voice_names")
++    if isinstance(raw_voices, Sequence) and not isinstance(raw_voices, (str, bytes)):
++        predefined_voices = tuple(name for name in raw_voices if isinstance(name, str))
++    else:
++        predefined_voices = tuple(item.voices)
++    display_name = metadata.get("display_name") or metadata.get("name") or item.id
++    language = metadata.get("language")
++    max_tokens = metadata.get("max_token_per_chunk")
++    return DiscoveredBundle(
++        id=item.id,
++        ref=item.ref,
++        display_name=display_name if isinstance(display_name, str) else item.id,
++        aliases=tuple(item.aliases),
++        language=language if isinstance(language, str) and language else "unknown",
++        sample_rate=item.sample_rate,
++        precisions=tuple(sorted(precisions)),
++        predefined_voices=predefined_voices,
++        default_voice=(
++            item.default_voice
++            if isinstance(item.default_voice, str) and item.default_voice
++            else None
++        ),
++        source_revision=(
++            metadata.get("source_revision")
++            if isinstance(metadata.get("source_revision"), str)
++            else None
++        ),
++        max_tokens=(
++            max_tokens if isinstance(max_tokens, int) and not isinstance(max_tokens, bool) else None
++        ),
++        voice_details=_voice_details(metadata),
++        metadata=metadata,
++    )
++
++
++def discover_bundles(
++    *,
++    language: str | None = None,
++    cache_dir: str | Path | None = None,
++    catalog_path: str | Path | None = None,
++    offline: bool = False,
++    refresh: bool = False,
++    progress: AssetProgressCallback | None = None,
++) -> tuple[DiscoveredBundle, ...]:
++    """List Pocket bundle metadata without installing bundles or opening a runtime."""
++    items = list_pocket_bundles(
++        language=language,
++        cache_dir=cache_dir,
++        catalog_path=catalog_path,
++        offline=offline,
++        refresh=refresh,
++        progress=progress,
++    )
++    return tuple(_from_catalog_item(item) for item in items)
++
++
++def runtime_identity(
++    bundle: DiscoveredBundle | PocketBundle | None = None,
++) -> dict[str, str | None]:
++    """Return PocketSynth and OnnxVoice version identity without opening a model."""
++    from . import __version__
++
++    return {
++        "engine_version": __version__,
++        "runtime_revision": version("onnxvoice"),
++        "catalog_revision": None,
++        "bundle_revision": bundle.source_revision if bundle is not None else None,
++    }
+diff --git a/pocketsynth/errors.py b/pocketsynth/errors.py
+index e08b07a..4f7b767 100644
+--- a/pocketsynth/errors.py
++++ b/pocketsynth/errors.py
+@@ -66,6 +66,34 @@ class VoicePromptError(PocketSynthError):
+     pass
+
+
++class InvalidVoicePromptMetadataError(VoicePromptError, ValueError):
++    """Raised when catalog prompt metadata violates the public contract."""
++
++
++class VoicePromptChangedError(VoicePromptError):
++    """Raised when a pinned managed prompt no longer matches catalog metadata."""
++
++    def __init__(
++        self,
++        *,
++        ref: str,
++        expected_sha256: str,
++        actual_sha256: str,
++        expected_revision: str | None = None,
++        actual_revision: str | None = None,
++    ) -> None:
++        self.ref = ref
++        self.expected_sha256 = expected_sha256
++        self.actual_sha256 = actual_sha256
++        self.expected_revision = expected_revision
++        self.actual_revision = actual_revision
++        super().__init__(
++            f"Managed voice prompt {ref!r} changed since it was selected: "
++            f"expected SHA-256 {expected_sha256} at revision {expected_revision!r}, "
++            f"catalog now declares SHA-256 {actual_sha256} at revision {actual_revision!r}."
++        )
++
++
+ class SynthesisError(PocketSynthError):
+     """Base class for request-level synthesis failures."""
+
+diff --git a/pocketsynth/runtime.py b/pocketsynth/runtime.py
+index 98ef8a0..4332928 100644
+--- a/pocketsynth/runtime.py
++++ b/pocketsynth/runtime.py
+@@ -12,13 +12,12 @@ from ._onnxvoice import (
+     ResolvedPocketBundle,
+     ResolvedVoicePrompt,
+     _call,
++    fetch_voice_prompt,
+     install_pretrained_bundle,
+     open_installed_bundle,
+     open_local_bundle,
+-    resolve_voice_prompt,
+     runtime_diagnostics,
+ )
+-from ._onnxvoice import list_voice_prompts as list_pocket_voice_prompts
+ from .asset_progress import AssetProgressCallback
+ from .bundle import BundleMetadata, BundlePaths, Precision
+ from .config import GenerationConfig
+@@ -47,6 +46,9 @@ from .types import (
+ )
+ from .voice import PreparedVoice, prepare_voice
+ from .voice_level import VoiceLevelConfig, apply_voice_level_calibration
++from .voice_prompts import VoicePromptInfo
++from .voice_prompts import inspect_voice_prompt as query_inspect_voice_prompt
++from .voice_prompts import list_voice_prompts as query_voice_prompts
+
+
+ class PocketRuntime:
+@@ -203,17 +205,28 @@ class PocketRuntime:
+         dataset: str | None = None,
+         variant: str | None = None,
+         license: str | None = None,
+-    ) -> tuple[Any, ...]:
++        refresh: bool = False,
++    ) -> tuple[VoicePromptInfo, ...]:
+         self._ensure_open()
+-        return list_pocket_voice_prompts(
++        return query_voice_prompts(
+             cache_dir=self._cache_dir,
+             offline=self._offline,
++            refresh=refresh,
+             dataset=dataset,
+             variant=variant,
+             license=license,
+             progress=self._progress,
+         )
+
++    def inspect_voice_prompt(self, ref: str, *, refresh: bool = False) -> VoicePromptInfo:
++        self._ensure_open()
++        return query_inspect_voice_prompt(
++            ref,
++            cache_dir=self._cache_dir,
++            offline=self._offline,
++            refresh=refresh,
++        )
++
+     @property
+     def bundle_language(self) -> str:
+         return resolve_bundle_language(self.metadata)
+@@ -233,9 +246,9 @@ class PocketRuntime:
+     def sample_rate(self) -> int:
+         return self.metadata.sample_rate
+
+-    def _resolve_voice_prompt(self, ref: str) -> ResolvedVoicePrompt:
+-        return resolve_voice_prompt(
+-            ref,
++    def _resolve_voice_prompt(self, source: str | VoicePromptInfo) -> ResolvedVoicePrompt:
++        return fetch_voice_prompt(
++            source,
+             cache_dir=self._cache_dir,
+             offline=self._offline,
+             progress=self._progress,
+@@ -275,6 +288,7 @@ class PocketRuntime:
+             metadata=voice.metadata,
+             fingerprint=voice.fingerprint,
+             source_revision=self.source_revision,
++            voice_prompt=voice.voice_prompt,
+         )
+
+     def infer_tokens(
+diff --git a/pocketsynth/voice.py b/pocketsynth/voice.py
+index 0de4843..d369ca3 100644
+--- a/pocketsynth/voice.py
++++ b/pocketsynth/voice.py
+@@ -12,6 +12,7 @@ import numpy as np
+ from ._onnxvoice import ResolvedVoicePrompt
+ from .audio import as_float32_mono
+ from .errors import VoicePromptError
++from .voice_prompts import VoicePromptInfo
+
+
+ @dataclass(frozen=True, slots=True)
+@@ -24,6 +25,12 @@ class PreparedVoice:
+     metadata: dict[str, Any] = field(default_factory=dict)
+     fingerprint: str | None = None
+     source_revision: str | None = None
++    voice_prompt: VoicePromptInfo | None = None
++
++    @property
++    def bundle_revision(self) -> str | None:
++        """The active Pocket bundle revision; prompt revisions live on voice_prompt."""
++        return self.source_revision
+
+     @property
+     def identity(self) -> dict[str, str | int | None] | None:
+@@ -38,6 +45,15 @@ class PreparedVoice:
+                 "name": name,
+                 "source_revision": self.source_revision,
+             }
++        if self.voice_prompt is not None and self.fingerprint is not None:
++            return {
++                "kind": "managed_reference",
++                "ref": self.voice_prompt.ref,
++                "source_sha256": self.voice_prompt.sha256,
++                "source_revision": self.voice_prompt.source_revision,
++                "prepared_sha256": self.fingerprint,
++                "sample_rate": self.sample_rate,
++            }
+         if kind == "reference" and self.fingerprint is not None:
+             return {
+                 "kind": "reference",
+@@ -155,17 +171,18 @@ def _predefined_fingerprint(bundle_id: str | None, name: str, source_revision: s
+
+ def prepare_voice(
+     runtime: Any,
+-    source: str | Path | tuple[np.ndarray, int] | PreparedVoice,
++    source: str | Path | tuple[np.ndarray, int] | PreparedVoice | VoicePromptInfo,
+     *,
+     sample_rate: int,
+     bundle_id: str | None = None,
+     source_revision: str | None = None,
+     predefined_voices: tuple[str, ...] = (),
+-    managed_voice_resolver: Callable[[str], ResolvedVoicePrompt] | None = None,
++    managed_voice_resolver: Callable[[str | VoicePromptInfo], ResolvedVoicePrompt] | None = None,
+ ) -> PreparedVoice:
+     if isinstance(source, PreparedVoice):
+         return source
+     metadata: dict[str, Any] = {"kind": "reference"}
++    managed_info: VoicePromptInfo | None = None
+     if isinstance(source, tuple):
+         audio, source_rate = source
+         label = None
+@@ -190,23 +207,37 @@ def prepare_voice(
+             fingerprint=_predefined_fingerprint(bundle_id, source, source_revision),
+             source_revision=source_revision,
+         )
+-    elif isinstance(source, str) and _is_managed_voice_prompt_ref(source):
++    elif isinstance(source, VoicePromptInfo) or (
++        isinstance(source, str) and _is_managed_voice_prompt_ref(source)
++    ):
+         if managed_voice_resolver is None:
+             raise VoicePromptError("Managed voice prompts require a configured OnnxVoice resolver")
+         prompt = managed_voice_resolver(source)
++        managed_info = VoicePromptInfo(
++            ref=prompt.ref,
++            source_repository=prompt.source_repository,
++            source_revision=prompt.source_revision,
++            source_path=prompt.source_path,
++            size=prompt.size,
++            sha256=prompt.sha256,
++            license=prompt.license,
++            dataset=prompt.dataset,
++            variant=prompt.variant,
++        )
+         audio = load_reference_audio(prompt.path, target_sample_rate=sample_rate)
+         source_rate = sample_rate
+-        label = source
++        label = managed_info.ref
+         metadata.update(
+             {
+-                "managed_ref": prompt.ref,
+-                "source_repository": prompt.source_repository,
+-                "source_revision": prompt.source_revision,
+-                "source_path": prompt.source_path,
+-                "source_sha256": prompt.sha256,
+-                "license": prompt.license,
+-                "dataset": prompt.dataset,
+-                "variant": prompt.variant,
++                "kind": "managed_reference",
++                "managed_ref": managed_info.ref,
++                "source_repository": managed_info.source_repository,
++                "source_revision": managed_info.source_revision,
++                "source_path": managed_info.source_path,
++                "source_sha256": managed_info.sha256,
++                "license": managed_info.license,
++                "dataset": managed_info.dataset,
++                "variant": managed_info.variant,
+             }
+         )
+     elif isinstance(source, str) and not _looks_like_path_string(source):
+@@ -234,4 +265,5 @@ def prepare_voice(
+         metadata=metadata,
+         fingerprint=_reference_fingerprint(audio, sample_rate),
+         source_revision=source_revision,
++        voice_prompt=managed_info,
+     )
+diff --git a/pocketsynth/voice_prompts.py b/pocketsynth/voice_prompts.py
+new file mode 100644
+index 0000000..eaf304c
+--- /dev/null
++++ b/pocketsynth/voice_prompts.py
+@@ -0,0 +1,121 @@
++from __future__ import annotations
++
++import re
++from dataclasses import dataclass
++from pathlib import Path
++from typing import Any
++
++from ._onnxvoice import inspect_voice_prompt_metadata, list_voice_prompt_metadata
++from .asset_progress import AssetProgressCallback
++from .errors import InvalidVoicePromptMetadataError
++
++_PROMPT_REF_PREFIX = "kyutai-tts-voices:"
++_SHA256_RE = re.compile(r"[0-9a-f]{64}\Z")
++
++
++@dataclass(frozen=True, slots=True)
++class VoicePromptInfo:
++    """Pinned catalog metadata for one managed voice prompt."""
++
++    ref: str
++    source_repository: str
++    source_revision: str
++    source_path: str
++    size: int
++    sha256: str
++    license: str
++    dataset: str
++    variant: str
++
++    def __post_init__(self) -> None:
++        for name in (
++            "ref",
++            "source_repository",
++            "source_revision",
++            "source_path",
++            "license",
++            "dataset",
++            "variant",
++        ):
++            value = getattr(self, name)
++            if not isinstance(value, str) or not value.strip():
++                raise InvalidVoicePromptMetadataError(f"{name} must be a non-empty string")
++        prompt_id = self.ref.removeprefix(_PROMPT_REF_PREFIX)
++        if (
++            not self.ref.startswith(_PROMPT_REF_PREFIX)
++            or self.ref != self.ref.strip()
++            or not prompt_id
++            or prompt_id != prompt_id.strip()
++        ):
++            raise InvalidVoicePromptMetadataError(
++                f"ref must be a canonical {_PROMPT_REF_PREFIX!r} reference"
++            )
++        if isinstance(self.size, bool) or not isinstance(self.size, int) or self.size <= 0:
++            raise InvalidVoicePromptMetadataError("size must be a positive integer")
++        if not isinstance(self.sha256, str) or _SHA256_RE.fullmatch(self.sha256) is None:
++            raise InvalidVoicePromptMetadataError(
++                "sha256 must be a lowercase 64-character hex digest"
++            )
++
++
++def _from_catalog_record(record: Any) -> VoicePromptInfo:
++    try:
++        return VoicePromptInfo(
++            ref=record.ref,
++            source_repository=record.source_repository,
++            source_revision=record.source_revision,
++            source_path=record.source_path,
++            size=record.size,
++            sha256=record.sha256,
++            license=record.license,
++            dataset=record.dataset,
++            variant=record.variant,
++        )
++    except AttributeError as exc:
++        raise InvalidVoicePromptMetadataError(
++            "OnnxVoice returned incomplete voice prompt metadata"
++        ) from exc
++
++
++def list_voice_prompts(
++    *,
++    cache_dir: str | Path | None = None,
++    catalog_path: str | Path | None = None,
++    offline: bool = False,
++    refresh: bool = False,
++    dataset: str | None = None,
++    variant: str | None = None,
++    license: str | None = None,
++    progress: AssetProgressCallback | None = None,
++) -> tuple[VoicePromptInfo, ...]:
++    """List managed prompt metadata without fetching prompt audio or opening a runtime."""
++    records = list_voice_prompt_metadata(
++        cache_dir=cache_dir,
++        catalog_path=catalog_path,
++        offline=offline,
++        refresh=refresh,
++        dataset=dataset,
++        variant=variant,
++        license=license,
++        progress=progress,
++    )
++    return tuple(_from_catalog_record(record) for record in records)
++
++
++def inspect_voice_prompt(
++    ref: str,
++    *,
++    cache_dir: str | Path | None = None,
++    catalog_path: str | Path | None = None,
++    offline: bool = False,
++    refresh: bool = False,
++) -> VoicePromptInfo:
++    """Resolve one managed prompt's pinned metadata without fetching its audio."""
++    record = inspect_voice_prompt_metadata(
++        ref,
++        cache_dir=cache_dir,
++        catalog_path=catalog_path,
++        offline=offline,
++        refresh=refresh,
++    )
++    return _from_catalog_record(record)
+diff --git a/tests/test_cli.py b/tests/test_cli.py
+index c0788b7..edb832d 100644
+--- a/tests/test_cli.py
++++ b/tests/test_cli.py
+@@ -4,10 +4,41 @@ from unittest.mock import MagicMock, patch
+
+ import pytest
+
++from pocketsynth import DiscoveredBundle, VoicePromptInfo
+ from pocketsynth.__main__ import main
+ from pocketsynth.errors import VoicePromptError
+
+
++def voice_prompt(ref: str) -> VoicePromptInfo:
++    return VoicePromptInfo(
++        ref=ref,
++        source_repository="kyutai-tts-voices",
++        source_revision="catalog-revision",
++        source_path="speaker/prompt.wav",
++        size=42,
++        sha256="a" * 64,
++        license="cc-by-4.0",
++        dataset="alba-mackenna",
++        variant="casual",
++    )
++
++
++def discovered_bundle() -> DiscoveredBundle:
++    return DiscoveredBundle(
++        id="english_2026-04",
++        ref="pocket:english_2026-04",
++        display_name="English",
++        aliases=(),
++        language="en",
++        sample_rate=24_000,
++        precisions=("int8", "fp32"),
++        predefined_voices=("alba",),
++        default_voice="alba",
++        source_revision="bundle-revision",
++        max_tokens=512,
++    )
++
++
+ @pytest.mark.parametrize("voice", ["alba", "voice.wav", "kyutai-tts-voices:alba-mackenna/casual"])
+ @pytest.mark.parametrize(
+     ("sentence_split_args", "expected_sentence_split"),
+@@ -101,11 +132,10 @@ def test_check_reports_available_provider(capsys) -> None:
+ def test_check_validates_predefined_names_from_catalog(
+     voice: str, expected_status: int, expected_text: str, capsys
+ ) -> None:
+-    manager = MagicMock()
+-    manager.catalog.resolve.return_value.metadata = {"predefined_voice_names": ["alba"]}
+-
+     with (
+-        patch("onnxvoice.OnnxVoice", return_value=manager),
++        patch(
++            "pocketsynth.__main__.discover_bundles", return_value=(discovered_bundle(),)
++        ) as discover,
+         patch("onnxvoice.available_providers", return_value=["CPUExecutionProvider"]),
+         patch("pocketsynth.__main__._read_pcm_wav") as read_wav,
+     ):
+@@ -114,8 +144,7 @@ def test_check_validates_predefined_names_from_catalog(
+     output = capsys.readouterr().out
+     assert status == expected_status
+     assert expected_text in output
+-    manager.catalog.resolve.assert_called_once_with("pocket:english_2026-04", quality="int8")
+-    manager.install.assert_not_called()
++    discover.assert_called_once_with(cache_dir=None, offline=False)
+     read_wav.assert_not_called()
+
+
+@@ -165,18 +194,10 @@ def test_synthesize_cli_documents_sentence_split_modes(capsys) -> None:
+
+ def test_voices_list_filters_catalog_without_fetching_audio(tmp_path, capsys) -> None:
+     ref = "kyutai-tts-voices:alba-mackenna/casual"
+-    prompt = MagicMock(
+-        ref=ref,
+-        dataset="alba-mackenna",
+-        variant="casual",
+-        license="cc-by-4.0",
+-        source_path="alba-mackenna/casual.wav",
+-    )
+-    manager = MagicMock()
+-    manager.list_pocket_voice_prompts.return_value = (prompt,)
++    prompt = voice_prompt(ref)
+     cache_dir = tmp_path / "cache"
+
+-    with patch("onnxvoice.OnnxVoice", return_value=manager):
++    with patch("pocketsynth.__main__.list_voice_prompts", return_value=(prompt,)) as listing:
+         status = main(
+             [
+                 "voices",
+@@ -196,33 +217,33 @@ def test_voices_list_filters_catalog_without_fetching_audio(tmp_path, capsys) ->
+     assert status == 0
+     output = capsys.readouterr().out
+     assert "REF\tDATASET\tVARIANT\tLICENSE\tSOURCE_PATH" in output
+-    assert f"{ref}\talba-mackenna\tcasual\tcc-by-4.0\talba-mackenna/casual.wav" in output
+-    manager.list_pocket_voice_prompts.assert_called_once_with(
++    assert f"{ref}\talba-mackenna\tcasual\tcc-by-4.0\tspeaker/prompt.wav" in output
++    listing.assert_called_once_with(
++        cache_dir=cache_dir,
++        offline=True,
+         dataset="alba-mackenna",
+         variant="casual",
+         license="cc-by-4.0",
+-        progress=None,
+     )
+-    manager.fetch_pocket_voice_prompt.assert_not_called()
+
+
+-def test_check_recognizes_cataloged_managed_voice_without_fetching_audio(capsys) -> None:
++def test_check_inspects_managed_voice_without_fetching_audio(capsys) -> None:
+     ref = "kyutai-tts-voices:alba-mackenna/casual"
+-    prompt = MagicMock(ref=ref)
+-    manager = MagicMock()
+-    manager.list_pocket_voice_prompts.return_value = (prompt,)
++    prompt = voice_prompt(ref)
+
+     with (
+-        patch("onnxvoice.OnnxVoice", return_value=manager),
++        patch("pocketsynth.__main__.inspect_voice_prompt", return_value=prompt) as inspect,
+         patch("onnxvoice.available_providers", return_value=["CPUExecutionProvider"]),
+         patch("pocketsynth.__main__._read_pcm_wav") as read_wav,
++        patch("pocketsynth.__main__.PocketRuntime.from_pretrained") as factory,
+     ):
+         status = main(["check", "--offline", "--voice", ref])
+
+     assert status == 0
+     assert f"Managed voice prompt: OK ({ref})" in capsys.readouterr().out
+-    manager.fetch_pocket_voice_prompt.assert_not_called()
++    inspect.assert_called_once_with(ref, cache_dir=None, offline=True)
+     read_wav.assert_not_called()
++    factory.assert_not_called()
+
+
+ def test_synthesize_cli_reports_invalid_managed_voice_cleanly(tmp_path, capsys) -> None:
+diff --git a/tests/test_discovery.py b/tests/test_discovery.py
+new file mode 100644
+index 0000000..81415c1
+--- /dev/null
++++ b/tests/test_discovery.py
+@@ -0,0 +1,177 @@
++from __future__ import annotations
++
++from pathlib import Path
++from types import SimpleNamespace
++from unittest.mock import MagicMock, patch
++
++from pocketsynth import __version__
++from pocketsynth.assets import PocketBundle
++from pocketsynth.discovery import (
++    DiscoveredBundle,
++    DiscoveredVoice,
++    discover_bundles,
++    runtime_identity,
++)
++
++
++def catalog_item() -> SimpleNamespace:
++    return SimpleNamespace(
++        id="english_2026-04",
++        ref="pocket:english_2026-04",
++        aliases=("english", "en"),
++        sample_rate=24_000,
++        voices=("alba",),
++        default_voice="alba",
++        artifacts=(SimpleNamespace(quality="fp16"),),
++        metadata={
++            "display_name": "English 2026-04",
++            "language": "en",
++            "profiles": {"int8": {}, "fp32": {}},
++            "predefined_voice_names": ["alba"],
++            "source_revision": "bundle-revision",
++            "max_token_per_chunk": 512,
++            "voice_details": [
++                {
++                    "id": "alba",
++                    "gender": "female",
++                    "language": "en",
++                    "locale": "en-US",
++                    "language_label": "English",
++                },
++                {"id": "unknown-voice"},
++            ],
++        },
++    )
++
++
++def test_discover_bundles_returns_normalized_pocketsynth_owned_metadata(tmp_path: Path) -> None:
++    item = catalog_item()
++    progress = MagicMock()
++    catalog_path = tmp_path / "catalog.json"
++
++    with patch("pocketsynth.discovery.list_pocket_bundles", return_value=(item,)) as query:
++        result = discover_bundles(
++            language="en",
++            cache_dir=tmp_path / "cache",
++            catalog_path=catalog_path,
++            offline=True,
++            refresh=True,
++            progress=progress,
++        )
++
++    assert isinstance(result, tuple)
++    assert isinstance(result[0], DiscoveredBundle)
++    assert result[0] == DiscoveredBundle(
++        id="english_2026-04",
++        ref="pocket:english_2026-04",
++        display_name="English 2026-04",
++        aliases=("english", "en"),
++        language="en",
++        sample_rate=24_000,
++        precisions=("fp16", "fp32", "int8"),
++        predefined_voices=("alba",),
++        default_voice="alba",
++        source_revision="bundle-revision",
++        max_tokens=512,
++        voice_details=(
++            DiscoveredVoice(
++                id="alba",
++                gender="female",
++                language="en",
++                locale="en-US",
++                language_label="English",
++            ),
++            DiscoveredVoice(id="unknown-voice"),
++        ),
++        metadata=item.metadata,
++    )
++    query.assert_called_once_with(
++        language="en",
++        cache_dir=tmp_path / "cache",
++        catalog_path=catalog_path,
++        offline=True,
++        refresh=True,
++        progress=progress,
++    )
++
++
++def test_bundle_discovery_adapter_only_lists_catalog_metadata(tmp_path: Path) -> None:
++    from pocketsynth._onnxvoice import list_pocket_bundles
++
++    item = catalog_item()
++    module = MagicMock()
++    manager = module.OnnxVoice.return_value
++    manager.list.return_value = [item]
++    events = []
++    catalog_path = tmp_path / "catalog.json"
++
++    with patch("pocketsynth._onnxvoice._onnxvoice", return_value=module):
++        result = list_pocket_bundles(
++            language="de",
++            cache_dir=tmp_path / "cache",
++            catalog_path=catalog_path,
++            offline=True,
++            refresh=True,
++            progress=events.append,
++        )
++
++    assert result == (item,)
++    module.OnnxVoice.assert_called_once_with(
++        cache_dir=tmp_path / "cache",
++        offline=True,
++        catalog_sources={"pocket": str(catalog_path)},
++    )
++    manager.list.assert_called_once()
++    args = manager.list.call_args
++    assert args.args == ("pocket",)
++    assert args.kwargs["language"] == "de"
++    assert args.kwargs["refresh"] is True
++    assert callable(args.kwargs["progress"])
++    args.kwargs["progress"](SimpleNamespace(phase="catalog_refresh", ref="pocket:english"))
++    assert events[0].phase == "catalog"
++    assert events[0].ref == "pocket:english"
++    manager.install.assert_not_called()
++    manager.open.assert_not_called()
++
++
++def test_runtime_identity_uses_versions_and_separate_bundle_revision() -> None:
++    bundle = DiscoveredBundle(
++        id="english_2026-04",
++        ref="pocket:english_2026-04",
++        display_name="English",
++        aliases=(),
++        language="en",
++        sample_rate=24_000,
++        precisions=("int8",),
++        predefined_voices=("alba",),
++        default_voice="alba",
++        source_revision="bundle-revision",
++        max_tokens=512,
++    )
++
++    with patch("pocketsynth.discovery.version", return_value="0.2.2"):
++        identity = runtime_identity(bundle)
++
++    assert identity == {
++        "engine_version": __version__,
++        "runtime_revision": "0.2.2",
++        "catalog_revision": None,
++        "bundle_revision": "bundle-revision",
++    }
++
++
++def test_runtime_identity_supports_installed_bundle_and_no_bundle() -> None:
++    bundle = PocketBundle(
++        bundle_id="english_2026-04",
++        path=Path("bundle"),
++        tokenizer_path=Path("tokenizer.model"),
++        metadata_path=Path("metadata.json"),
++        source_revision="installed-revision",
++    )
++
++    with patch("pocketsynth.discovery.version", return_value="0.2.2"):
++        with_bundle = runtime_identity(bundle)
++        without_bundle = runtime_identity()
++
++    assert with_bundle["bundle_revision"] == "installed-revision"
++    assert without_bundle["bundle_revision"] is None
+diff --git a/tests/test_examples.py b/tests/test_examples.py
+index 8dd2c43..cc578b4 100644
+--- a/tests/test_examples.py
++++ b/tests/test_examples.py
+@@ -67,6 +67,7 @@ def test_kyutai_voice_example_help_is_available_without_runtime_assets() -> None
+     help_text = " ".join(result.stdout.split())
+     assert "--voice VOICE" in help_text
+     assert "--offline" in result.stdout
++    assert "--pin-prompt" in result.stdout
+
+
+ def test_clone_all_example_help_lists_requested_options() -> None:
+@@ -120,32 +121,61 @@ def test_kyutai_voice_example_uses_managed_ref_without_manual_download(tmp_path:
+     runtime.synthesize_text.return_value.save_wav.assert_called_once_with(output)
+
+
++def test_kyutai_voice_example_can_pin_prompt_metadata(tmp_path: Path) -> None:
++    prompt = MagicMock()
++    runtime = MagicMock()
++    context = MagicMock()
++    context.__enter__.return_value = runtime
++    context.__exit__.return_value = False
++    output = tmp_path / "pinned.wav"
++
++    with (
++        patch("examples.kyutai_voice.inspect_voice_prompt", return_value=prompt) as inspect,
++        patch(
++            "examples.kyutai_voice.PocketRuntime.from_pretrained", return_value=context
++        ) as factory,
++    ):
++        status = kyutai_voice_main(
++            [
++                "--voice",
++                "kyutai-tts-voices:alba-mackenna/casual",
++                "--pin-prompt",
++                "--output",
++                str(output),
++                "--offline",
++            ]
++        )
++
++    assert status == 0
++    inspect.assert_called_once_with(
++        "kyutai-tts-voices:alba-mackenna/casual", cache_dir=None, offline=True
++    )
++    factory.assert_called_once_with("english_2026-04", cache_dir=None, offline=True)
++    runtime.prepare_voice.assert_called_once_with(prompt)
++    runtime.synthesize_text.assert_called_once()
++
++
+ def test_clone_all_continues_after_errors_and_writes_manifest(tmp_path: Path) -> None:
+     prompts = (
+         SimpleNamespace(
+-            id="alba-mackenna/casual",
+             ref="kyutai-tts-voices:alba-mackenna/casual",
+             source_path="alba-mackenna/casual.wav",
+             license="CC-BY-4.0",
+             variant="casual",
+         ),
+         SimpleNamespace(
+-            id="vctk/speaker 2",
+             ref="kyutai-tts-voices:vctk/speaker-2",
+             source_path="vctk/speaker-2.wav",
+             license="CC-BY-4.0",
+             variant="casual",
+         ),
+         SimpleNamespace(
+-            id="donation/nc",
+             ref="kyutai-tts-voices:donation/nc",
+             source_path="donation/nc.wav",
+             license="CC-BY-NC-4.0",
+             variant="casual",
+         ),
+     )
+-    catalog = MagicMock()
+-    catalog.list_pocket_voice_prompts.return_value = prompts
+     runtime = MagicMock()
+     runtime.__enter__.return_value = runtime
+     runtime.__exit__.return_value = False
+@@ -164,7 +194,9 @@ def test_clone_all_continues_after_errors_and_writes_manifest(tmp_path: Path) ->
+     output_dir = tmp_path / "voices"
+
+     with (
+-        patch("examples.clone_all_kyutai_voices.OnnxVoice", return_value=catalog),
++        patch(
++            "examples.clone_all_kyutai_voices.list_voice_prompts", return_value=prompts
++        ) as listing,
+         patch(
+             "examples.clone_all_kyutai_voices.PocketRuntime.from_pretrained", return_value=runtime
+         ) as factory,
+@@ -189,24 +221,26 @@ def test_clone_all_continues_after_errors_and_writes_manifest(tmp_path: Path) ->
+         )
+
+     assert status == 1
+-    catalog.list_pocket_voice_prompts.assert_called_once_with(
+-        dataset="alba-mackenna", variant="casual"
++    listing.assert_called_once_with(
++        cache_dir=None,
++        offline=True,
++        dataset="alba-mackenna",
++        variant="casual",
+     )
+     factory.assert_called_once_with("test-bundle", cache_dir=None, offline=True)
+     assert prepared == [prompts[0].ref, prompts[1].ref]
+     assert (output_dir / "alba-mackenna__casual.wav").is_file()
+-    assert not (output_dir / "vctk__speaker__2.wav").exists()
++    assert not (output_dir / "vctk__speaker-2.wav").exists()
+     with (output_dir / "manifest.csv").open(encoding="utf-8", newline="") as stream:
+         rows = list(csv.DictReader(stream))
+     assert [row["status"] for row in rows] == ["ok", "error"]
+     assert rows[1]["error"] == "RuntimeError: broken sample"
+-    assert rows[1]["output"].endswith("vctk__speaker__2.wav")
++    assert rows[1]["output"].endswith("vctk__speaker-2.wav")
+
+
+ def test_clone_all_dry_run_discovers_every_prompt_without_opening_runtime(tmp_path: Path) -> None:
+     prompts = tuple(
+         SimpleNamespace(
+-            id=f"speaker/{index}",
+             ref=f"kyutai-tts-voices:speaker/{index}",
+             source_path=f"speaker/{index}.wav",
+             license="CC-BY-4.0",
+@@ -214,18 +248,19 @@ def test_clone_all_dry_run_discovers_every_prompt_without_opening_runtime(tmp_pa
+         )
+         for index in range(3)
+     )
+-    catalog = MagicMock()
+-    catalog.list_pocket_voice_prompts.return_value = prompts
+     output_dir = tmp_path / "dry-run"
+
+     with (
+-        patch("examples.clone_all_kyutai_voices.OnnxVoice", return_value=catalog),
++        patch(
++            "examples.clone_all_kyutai_voices.list_voice_prompts", return_value=prompts
++        ) as listing,
+         patch("examples.clone_all_kyutai_voices.PocketRuntime.from_pretrained") as factory,
+     ):
+         status = clone_all_main(["--output-dir", str(output_dir), "--dry-run"])
+
+     assert status == 0
+     factory.assert_not_called()
++    listing.assert_called_once_with(cache_dir=None, offline=False, dataset=None, variant=None)
+     with (output_dir / "manifest.csv").open(encoding="utf-8", newline="") as stream:
+         rows = list(csv.DictReader(stream))
+     assert len(rows) == len(prompts)
+diff --git a/tests/test_onnxvoice_boundary.py b/tests/test_onnxvoice_boundary.py
+index 83c5c2b..23edc7b 100644
+--- a/tests/test_onnxvoice_boundary.py
++++ b/tests/test_onnxvoice_boundary.py
+@@ -150,7 +150,7 @@ def test_managed_bundle_catalog_voice_names_reach_runtime(tmp_path: Path) -> Non
+     assert runtime._cache_dir == cache_dir
+     assert runtime._offline is True
+     assert runtime._progress is progress
+-    with patch("pocketsynth.runtime.resolve_voice_prompt") as resolve_prompt:
++    with patch("pocketsynth.runtime.fetch_voice_prompt") as resolve_prompt:
+         runtime._resolve_voice_prompt("kyutai-tts-voices:alba-mackenna/casual")
+     resolve_prompt.assert_called_once_with(
+         "kyutai-tts-voices:alba-mackenna/casual",
+@@ -158,20 +158,29 @@ def test_managed_bundle_catalog_voice_names_reach_runtime(tmp_path: Path) -> Non
+         offline=True,
+         progress=progress,
+     )
+-    with patch(
+-        "pocketsynth.runtime.list_pocket_voice_prompts", return_value=("prompt",)
+-    ) as list_prompts:
++    with patch("pocketsynth.runtime.query_voice_prompts", return_value=("prompt",)) as list_prompts:
+         assert runtime.list_voice_prompts(
+             dataset="alba-mackenna", variant="casual", license="cc-by-4.0"
+         ) == ("prompt",)
+     list_prompts.assert_called_once_with(
+         cache_dir=cache_dir,
+         offline=True,
++        refresh=False,
+         dataset="alba-mackenna",
+         variant="casual",
+         license="cc-by-4.0",
+         progress=progress,
+     )
++    with patch(
++        "pocketsynth.runtime.query_inspect_voice_prompt", return_value="prompt-info"
++    ) as inspect:
++        assert runtime.inspect_voice_prompt("kyutai-tts-voices:alba-mackenna/casual", refresh=True)
++        inspect.assert_called_once_with(
++            "kyutai-tts-voices:alba-mackenna/casual",
++            cache_dir=cache_dir,
++            offline=True,
++            refresh=True,
++        )
+     assert runtime.predefined_voices == ("alba",)
+     open_runtime.assert_called_once_with(
+         resolved,
+@@ -233,7 +242,7 @@ def test_resolve_voice_prompt_resolves_and_fetches_through_onnxvoice(
+         source_revision="pinned-revision",
+         source_path="alba-mackenna/casual.wav",
+         size=1234,
+-        sha256="prompt-sha256",
++        sha256="aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+         license="cc-by-4.0",
+         dataset="alba-mackenna",
+         variant="casual",
+@@ -250,7 +259,7 @@ def test_resolve_voice_prompt_resolves_and_fetches_through_onnxvoice(
+         resolved = resolve_voice_prompt(ref, cache_dir=cache_dir, offline=True, progress=progress)
+
+     module.OnnxVoice.assert_called_once_with(cache_dir=cache_dir, offline=True)
+-    manager.resolve_pocket_voice_prompt.assert_called_once_with(ref)
++    manager.resolve_pocket_voice_prompt.assert_called_once_with(ref, refresh=False)
+     manager.fetch_pocket_voice_prompt.assert_called_once()
+     assert manager.fetch_pocket_voice_prompt.call_args.args == (ref,)
+     upstream_progress = manager.fetch_pocket_voice_prompt.call_args.kwargs["progress"]
+@@ -265,7 +274,7 @@ def test_resolve_voice_prompt_resolves_and_fetches_through_onnxvoice(
+         source_revision="pinned-revision",
+         source_path="alba-mackenna/casual.wav",
+         size=1234,
+-        sha256="prompt-sha256",
++        sha256="aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+         license="cc-by-4.0",
+         dataset="alba-mackenna",
+         variant="casual",
+diff --git a/tests/test_package_boundary.py b/tests/test_package_boundary.py
+index cd10cf6..09b1071 100644
+--- a/tests/test_package_boundary.py
++++ b/tests/test_package_boundary.py
+@@ -6,8 +6,6 @@ import subprocess
+ import sys
+ from pathlib import Path
+
+-from pocketsynth._onnxvoice import _ONNXVOICE_MINIMUM_VERSION
+-
+ ROOT = Path(__file__).resolve().parents[1]
+ PACKAGE = ROOT / "pocketsynth"
+ FORBIDDEN_IMPORTS = {"utterplan", "ssmd", "audiocompose"}
+@@ -53,8 +51,9 @@ FORBIDDEN_TERMS = (
+ def test_strict_public_import_does_not_load_convenience_or_text_split() -> None:
+     code = (
+         "import sys; import pocketsynth; "
+-        "from pocketsynth import PocketRuntime, SynthesisRequest; "
+-        "assert PocketRuntime and SynthesisRequest; "
++        "from pocketsynth import PocketRuntime, SynthesisRequest, VoicePromptInfo, list_voice_prompts, inspect_voice_prompt, DiscoveredVoice, DiscoveredBundle, discover_bundles, runtime_identity; "
++        "assert all((PocketRuntime, SynthesisRequest, VoicePromptInfo, list_voice_prompts, inspect_voice_prompt, DiscoveredVoice, DiscoveredBundle, discover_bundles, runtime_identity)); "
++        "assert 'onnxvoice' not in sys.modules; "
+         "assert 'pocketsynth.convenience' not in sys.modules; "
+         "assert 'pocketsynth.text_split' not in sys.modules"
+     )
+@@ -85,6 +84,19 @@ def test_runtime_package_has_no_removed_architecture_terminology() -> None:
+             assert re.search(rf"\b{re.escape(term)}\b", source) is None, (path, term)
+
+
++def test_cli_and_examples_do_not_import_private_onnxvoice_catalog_adapters() -> None:
++    paths = [PACKAGE / "__main__.py", *(ROOT / "examples").rglob("*.py")]
++    for path in paths:
++        tree = ast.parse(path.read_text(encoding="utf-8"), filename=str(path))
++        for node in ast.walk(tree):
++            if isinstance(node, ast.ImportFrom):
++                assert node.module != "pocketsynth._onnxvoice", path
++                if path.is_relative_to(ROOT / "examples"):
++                    assert node.module != "onnxvoice", path
++            if isinstance(node, ast.Attribute):
++                assert node.attr != "OnnxVoice", path
++
++
+ def test_project_metadata_has_only_supported_engine_dependencies() -> None:
+     metadata = (ROOT / "pyproject.toml").read_text(encoding="utf-8").casefold()
+     assert all(name not in metadata for name in FORBIDDEN_IMPORTS)
+@@ -93,7 +105,7 @@ def test_project_metadata_has_only_supported_engine_dependencies() -> None:
+     assert '"onnxvoice[gpu,pocket]>=0.2.2,<0.3"' in metadata
+     onnxvoice_minimums = re.findall(r'"onnxvoice(?:\[[^]]+\])?>=([^,<"]+)', metadata)
+     assert onnxvoice_minimums
+-    assert set(onnxvoice_minimums) == {_ONNXVOICE_MINIMUM_VERSION}
++    assert set(onnxvoice_minimums) == {"0.2.2"}
+
+
+ def test_onnxvoice_compatibility_workflow_covers_supported_versions() -> None:
+diff --git a/tests/test_runtime_strict.py b/tests/test_runtime_strict.py
+index 43feb22..938738f 100644
+--- a/tests/test_runtime_strict.py
++++ b/tests/test_runtime_strict.py
+@@ -21,6 +21,7 @@ from pocketsynth.runtime import PocketRuntime
+ from pocketsynth.types import LinguisticToken, PronunciationOverride, SynthesisRequest
+ from pocketsynth.voice import PreparedVoice
+ from pocketsynth.voice_level import VoiceLevelConfig
++from pocketsynth.voice_prompts import VoicePromptInfo
+ from tests.fakes import FakeBundleMetadata
+
+
+@@ -331,6 +332,42 @@ def test_reference_voice_without_catalog_gain_reports_missing_calibration() -> N
+     assert result.metadata["voice_level_application"]["source"] == "missing_calibration"
+
+
++def test_managed_reference_does_not_use_predefined_voice_calibration() -> None:
++    runtime, _, _ = make_runtime(raw_metadata={"voice_level_calibration": {"alba": -6.0}})
++    info = VoicePromptInfo(
++        ref="kyutai-tts-voices:alba-mackenna/casual",
++        source_repository="kyutai/tts-voices",
++        source_revision="prompt-revision",
++        source_path="alba-mackenna/casual.wav",
++        size=1234,
++        sha256="a" * 64,
++        license="cc-by-4.0",
++        dataset="alba-mackenna",
++        variant="casual",
++    )
++    voice = make_voice(metadata={"kind": "managed_reference"})
++    voice = PreparedVoice(
++        state=voice.state,
++        sample_rate=voice.sample_rate,
++        bundle_id=voice.bundle_id,
++        metadata=voice.metadata,
++        fingerprint=voice.fingerprint,
++        source_revision=voice.source_revision,
++        voice_prompt=info,
++    )
++
++    result = runtime.synthesize(
++        SynthesisRequest(id="managed", text="hello"),
++        voice=voice,
++        voice_level=VoiceLevelConfig(mode="calibrated"),
++    )
++
++    assert result.metadata["voice_identity"]["kind"] == "managed_reference"
++    assert result.metadata["voice_identity"]["source_sha256"] == info.sha256
++    assert result.metadata["voice_level_application"]["source"] == "missing_calibration"
++    np.testing.assert_array_equal(result.audio, np.arange(5, dtype=np.float32))
++
++
+ def test_explicit_voice_gain_overrides_calibration_policy() -> None:
+     runtime, _, _ = make_runtime(raw_metadata={"voice_level_calibration": {"alba": -6.0}})
+     voice = make_voice(
+diff --git a/tests/test_voice.py b/tests/test_voice.py
+index be331d2..94f32dd 100644
+--- a/tests/test_voice.py
++++ b/tests/test_voice.py
+@@ -14,6 +14,7 @@ from pocketsynth.voice import (
+     load_reference_audio,
+     prepare_voice,
+ )
++from pocketsynth.voice_prompts import VoicePromptInfo
+
+
+ def test_read_wav_and_resample(tmp_path):
+@@ -327,7 +328,7 @@ def test_managed_voice_ref_resolves_before_path_detection_and_preserves_metadata
+         source_revision="pinned-revision",
+         source_path="alba-mackenna/casual.wav",
+         size=1234,
+-        sha256="prompt-sha256",
++        sha256="aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+         license="cc-by-4.0",
+         dataset="alba-mackenna",
+         variant="casual",
+@@ -354,24 +355,81 @@ def test_managed_voice_ref_resolves_before_path_detection_and_preserves_metadata
+     runtime.prepare_voice.assert_called_once_with(audio, sample_rate=24_000)
+     assert voice.source == ref
+     assert voice.metadata == {
+-        "kind": "reference",
++        "kind": "managed_reference",
+         "managed_ref": ref,
+         "source_repository": "kyutai/tts-voices",
+         "source_revision": "pinned-revision",
+         "source_path": "alba-mackenna/casual.wav",
+-        "source_sha256": "prompt-sha256",
++        "source_sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+         "license": "cc-by-4.0",
+         "dataset": "alba-mackenna",
+         "variant": "casual",
+     }
+     assert voice.identity == {
+-        "kind": "reference",
+-        "sha256": voice.fingerprint,
++        "kind": "managed_reference",
++        "ref": ref,
++        "source_sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
++        "source_revision": "pinned-revision",
++        "prepared_sha256": voice.fingerprint,
++        "sample_rate": 24_000,
++    }
++
++
++def test_pinned_prompt_info_is_accepted_and_exposed_as_managed_identity(tmp_path: Path) -> None:
++    ref = "kyutai-tts-voices:alba-mackenna/casual"
++    info = VoicePromptInfo(
++        ref=ref,
++        source_repository="kyutai/tts-voices",
++        source_revision="pinned-revision",
++        source_path="alba-mackenna/casual.wav",
++        size=1234,
++        sha256="a" * 64,
++        license="cc-by-4.0",
++        dataset="alba-mackenna",
++        variant="casual",
++    )
++    prompt = ResolvedVoicePrompt(
++        ref=ref,
++        path=tmp_path / "casual.wav",
++        source_repository=info.source_repository,
++        source_revision=info.source_revision,
++        source_path=info.source_path,
++        size=info.size,
++        sha256=info.sha256,
++        license=info.license,
++        dataset=info.dataset,
++        variant=info.variant,
++    )
++    audio = np.array([0.25, -0.5], dtype=np.float32)
++    resolver = MagicMock(return_value=prompt)
++    runtime = MagicMock()
++
++    with patch("pocketsynth.voice.load_reference_audio", return_value=audio):
++        voice = prepare_voice(
++            runtime,
++            info,
++            sample_rate=24_000,
++            bundle_id="english_2026-04",
++            source_revision="bundle-revision",
++            managed_voice_resolver=resolver,
++        )
++
++    resolver.assert_called_once_with(info)
++    assert voice.voice_prompt == info
++    assert voice.bundle_revision == "bundle-revision"
++    assert voice.voice_prompt.source_revision == "pinned-revision"
++    assert voice.metadata["kind"] == "managed_reference"
++    assert voice.identity == {
++        "kind": "managed_reference",
++        "ref": ref,
++        "source_sha256": info.sha256,
++        "source_revision": info.source_revision,
++        "prepared_sha256": voice.fingerprint,
+         "sample_rate": 24_000,
+     }
+
+
+-def test_managed_and_local_wav_share_normalized_reference_identity(tmp_path: Path) -> None:
++def test_managed_and_local_wav_share_fingerprint_but_keep_distinct_identity(tmp_path: Path) -> None:
+     path = tmp_path / "same.wav"
+     frames = np.array([-2000, 0, 1000, 2500], dtype="<i2").tobytes()
+     _write_wav(path, channels=1, width=2, frames=frames, rate=16_000)
+@@ -383,7 +441,7 @@ def test_managed_and_local_wav_share_normalized_reference_identity(tmp_path: Pat
+         source_revision="pinned-revision",
+         source_path="alba-mackenna/casual.wav",
+         size=len(frames),
+-        sha256="prompt-sha256",
++        sha256="aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+         license="cc-by-4.0",
+         dataset="alba-mackenna",
+         variant="casual",
+@@ -398,5 +456,7 @@ def test_managed_and_local_wav_share_normalized_reference_identity(tmp_path: Pat
+         managed_voice_resolver=MagicMock(return_value=prompt),
+     )
+
+-    assert local.identity == managed.identity
+     assert local.fingerprint == managed.fingerprint
++    assert local.identity is not None and local.identity["kind"] == "reference"
++    assert managed.identity is not None and managed.identity["kind"] == "managed_reference"
++    assert managed.voice_prompt is not None and managed.voice_prompt.ref == ref
+diff --git a/tests/test_voice_prompts.py b/tests/test_voice_prompts.py
+new file mode 100644
+index 0000000..37ff186
+--- /dev/null
++++ b/tests/test_voice_prompts.py
+@@ -0,0 +1,306 @@
++from __future__ import annotations
++
++from dataclasses import FrozenInstanceError, replace
++from pathlib import Path
++from unittest.mock import MagicMock, patch
++
++import pytest
++
++from pocketsynth.errors import InvalidVoicePromptMetadataError
++from pocketsynth.voice_prompts import (
++    VoicePromptInfo,
++    inspect_voice_prompt,
++    list_voice_prompts,
++)
++
++SHA256 = "a" * 64
++
++
++def prompt_info(**changes: object) -> VoicePromptInfo:
++    values: dict[str, object] = {
++        "ref": "kyutai-tts-voices:alba-mackenna/casual",
++        "source_repository": "kyutai/tts-voices",
++        "source_revision": "pinned-revision",
++        "source_path": "alba-mackenna/casual.wav",
++        "size": 1234,
++        "sha256": SHA256,
++        "license": "cc-by-4.0",
++        "dataset": "alba-mackenna",
++        "variant": "casual",
++    }
++    values.update(changes)
++    return VoicePromptInfo(**values)  # type: ignore[arg-type]
++
++
++def catalog_record(**changes: object) -> MagicMock:
++    values = {
++        "ref": "kyutai-tts-voices:alba-mackenna/casual",
++        "source_repository": "kyutai/tts-voices",
++        "source_revision": "pinned-revision",
++        "source_path": "alba-mackenna/casual.wav",
++        "size": 1234,
++        "sha256": SHA256,
++        "license": "cc-by-4.0",
++        "dataset": "alba-mackenna",
++        "variant": "casual",
++    }
++    values.update(changes)
++    return MagicMock(**values)
++
++
++def test_voice_prompt_info_is_validated_frozen_and_value_comparable() -> None:
++    prompt = prompt_info()
++
++    assert prompt == prompt_info()
++    assert prompt.sha256 == SHA256
++    with pytest.raises(FrozenInstanceError):
++        prompt.ref = "changed"  # type: ignore[misc]
++
++
++@pytest.mark.parametrize(
++    ("field", "value"),
++    [
++        ("ref", ""),
++        ("ref", "kyutai-tts-voices:"),
++        ("ref", "kyutai-tts-voices: prompt"),
++        ("source_repository", " "),
++        ("source_revision", ""),
++        ("source_path", ""),
++        ("license", ""),
++        ("dataset", ""),
++        ("variant", ""),
++    ],
++)
++def test_voice_prompt_info_rejects_blank_or_noncanonical_text(field: str, value: str) -> None:
++    with pytest.raises(InvalidVoicePromptMetadataError):
++        prompt_info(**{field: value})
++
++
++@pytest.mark.parametrize("size", [0, -1, True, 1.5])
++def test_voice_prompt_info_rejects_invalid_size(size: object) -> None:
++    with pytest.raises(InvalidVoicePromptMetadataError, match="size"):
++        prompt_info(size=size)
++
++
++@pytest.mark.parametrize("sha256", ["a" * 63, "g" * 64, "A" * 64])
++def test_voice_prompt_info_rejects_invalid_sha256(sha256: str) -> None:
++    with pytest.raises(InvalidVoicePromptMetadataError, match="sha256"):
++        prompt_info(sha256=sha256)
++
++
++def test_list_voice_prompts_returns_only_typed_metadata_and_forwards_options(
++    tmp_path: Path,
++) -> None:
++    record = catalog_record()
++    progress = MagicMock()
++    catalog_path = tmp_path / "voice-prompts.json"
++
++    with patch(
++        "pocketsynth.voice_prompts.list_voice_prompt_metadata", return_value=(record,)
++    ) as query:
++        result = list_voice_prompts(
++            cache_dir=tmp_path / "cache",
++            catalog_path=catalog_path,
++            offline=True,
++            refresh=True,
++            dataset="alba-mackenna",
++            variant="casual",
++            license="cc-by-4.0",
++            progress=progress,
++        )
++
++    assert isinstance(result, tuple)
++    assert result == (prompt_info(),)
++    query.assert_called_once_with(
++        cache_dir=tmp_path / "cache",
++        catalog_path=catalog_path,
++        offline=True,
++        refresh=True,
++        dataset="alba-mackenna",
++        variant="casual",
++        license="cc-by-4.0",
++        progress=progress,
++    )
++
++
++def test_inspect_voice_prompt_returns_typed_metadata_and_forwards_options(
++    tmp_path: Path,
++) -> None:
++    record = catalog_record()
++    catalog_path = tmp_path / "voice-prompts.json"
++
++    with patch(
++        "pocketsynth.voice_prompts.inspect_voice_prompt_metadata", return_value=record
++    ) as query:
++        result = inspect_voice_prompt(
++            "kyutai-tts-voices:alba-mackenna/casual",
++            cache_dir=tmp_path / "cache",
++            catalog_path=catalog_path,
++            offline=True,
++            refresh=True,
++        )
++
++    assert result == prompt_info()
++    query.assert_called_once_with(
++        "kyutai-tts-voices:alba-mackenna/casual",
++        cache_dir=tmp_path / "cache",
++        catalog_path=catalog_path,
++        offline=True,
++        refresh=True,
++    )
++
++
++def test_public_api_rejects_incomplete_foreign_metadata() -> None:
++    record = catalog_record()
++    del record.source_path
++
++    with patch("pocketsynth.voice_prompts.inspect_voice_prompt_metadata", return_value=record):
++        with pytest.raises(InvalidVoicePromptMetadataError, match="incomplete"):
++            inspect_voice_prompt("kyutai-tts-voices:alba-mackenna/casual")
++
++
++def test_prompt_info_replace_preserves_validation() -> None:
++    prompt = prompt_info()
++
++    with pytest.raises(InvalidVoicePromptMetadataError):
++        replace(prompt, sha256="invalid")
++
++
++def test_metadata_adapters_forward_options_without_fetching_prompt_audio(
++    tmp_path: Path,
++) -> None:
++    from pocketsynth._onnxvoice import inspect_voice_prompt_metadata, list_voice_prompt_metadata
++
++    record = catalog_record()
++    module = MagicMock()
++    manager = module.OnnxVoice.return_value
++    manager.list_pocket_voice_prompts.return_value = (record,)
++    manager.resolve_pocket_voice_prompt.return_value = record
++    progress_events = []
++    catalog_path = tmp_path / "voice-prompts.json"
++
++    with patch("pocketsynth._onnxvoice._onnxvoice", return_value=module):
++        listed = list_voice_prompt_metadata(
++            cache_dir=tmp_path / "cache",
++            catalog_path=catalog_path,
++            offline=True,
++            refresh=True,
++            dataset="alba-mackenna",
++            variant="casual",
++            license="cc-by-4.0",
++            progress=progress_events.append,
++        )
++        upstream_progress = manager.list_pocket_voice_prompts.call_args.kwargs["progress"]
++        upstream_progress(type("Event", (), {"phase": "catalog_refresh", "ref": record.ref})())
++        inspected = inspect_voice_prompt_metadata(
++            record.ref,
++            cache_dir=tmp_path / "cache",
++            catalog_path=catalog_path,
++            offline=True,
++            refresh=True,
++        )
++
++    assert listed == (record,)
++    assert inspected is record
++    module.OnnxVoice.assert_called_with(
++        cache_dir=tmp_path / "cache",
++        catalog_sources={"pocket_voice_prompts": str(catalog_path)},
++        offline=True,
++    )
++    manager.list_pocket_voice_prompts.assert_called_once_with(
++        dataset="alba-mackenna",
++        variant="casual",
++        license="cc-by-4.0",
++        refresh=True,
++        progress=upstream_progress,
++    )
++    manager.resolve_pocket_voice_prompt.assert_called_once_with(record.ref, refresh=True)
++    assert progress_events[0].phase == "catalog"
++    assert progress_events[0].ref == record.ref
++    manager.fetch_pocket_voice_prompt.assert_not_called()
++    manager.install.assert_not_called()
++    manager.open.assert_not_called()
++
++
++@pytest.mark.parametrize(
++    ("error_name", "expected_error"),
++    [
++        ("VoicePromptOfflineError", "OfflineAssetError"),
++        ("VoicePromptIntegrityError", "AssetCacheError"),
++        ("VoicePromptCatalogError", "CatalogUnavailableError"),
++        ("InvalidVoicePromptRefError", "VoicePromptError"),
++    ],
++)
++def test_metadata_inspection_maps_onnxvoice_errors(error_name: str, expected_error: str) -> None:
++    from pocketsynth import errors
++
++    error_type = type(error_name, (Exception,), {})
++    module = MagicMock()
++    module.OnnxVoice.return_value.resolve_pocket_voice_prompt.side_effect = error_type(
++        "catalog detail"
++    )
++
++    with patch("pocketsynth._onnxvoice._onnxvoice", return_value=module):
++        with pytest.raises(getattr(errors, expected_error), match="catalog detail"):
++            inspect_voice_prompt("kyutai-tts-voices:missing")
++
++
++def test_fetch_voice_prompt_preserves_pinned_info_and_fetches_only_after_match(
++    tmp_path: Path,
++) -> None:
++    from pocketsynth._onnxvoice import fetch_voice_prompt
++
++    info = prompt_info()
++    record = catalog_record()
++    path = tmp_path / "prompt.wav"
++    progress = MagicMock()
++    module = MagicMock()
++    manager = module.OnnxVoice.return_value
++    manager.resolve_pocket_voice_prompt.return_value = record
++    manager.fetch_pocket_voice_prompt.return_value = path
++
++    with patch("pocketsynth._onnxvoice._onnxvoice", return_value=module):
++        resolved = fetch_voice_prompt(
++            info, cache_dir=tmp_path / "cache", offline=True, refresh=True, progress=progress
++        )
++
++    assert resolved.path == path
++    assert resolved.ref == info.ref
++    assert resolved.sha256 == info.sha256
++    assert resolved.source_revision == info.source_revision
++    manager.resolve_pocket_voice_prompt.assert_called_once_with(info.ref, refresh=True)
++    fetch_call = manager.fetch_pocket_voice_prompt.call_args
++    assert fetch_call.args == (info.ref,)
++    assert callable(fetch_call.kwargs["progress"])
++    assert "refresh" not in fetch_call.kwargs
++    module.OnnxVoice.assert_called_once_with(cache_dir=tmp_path / "cache", offline=True)
++
++
++@pytest.mark.parametrize(
++    ("changed", "actual_sha256", "actual_revision"),
++    [
++        ({"sha256": "b" * 64}, "b" * 64, "pinned-revision"),
++        ({"source_revision": "new-revision"}, SHA256, "new-revision"),
++    ],
++)
++def test_fetch_pinned_prompt_rejects_catalog_changes_before_audio_fetch(
++    changed: dict[str, str], actual_sha256: str, actual_revision: str
++) -> None:
++    from pocketsynth._onnxvoice import fetch_voice_prompt
++    from pocketsynth.errors import VoicePromptChangedError
++
++    info = prompt_info()
++    module = MagicMock()
++    manager = module.OnnxVoice.return_value
++    manager.resolve_pocket_voice_prompt.return_value = catalog_record(**changed)
++
++    with patch("pocketsynth._onnxvoice._onnxvoice", return_value=module):
++        with pytest.raises(VoicePromptChangedError) as caught:
++            fetch_voice_prompt(info)
++
++    assert caught.value.ref == info.ref
++    assert caught.value.expected_sha256 == info.sha256
++    assert caught.value.actual_sha256 == actual_sha256
++    assert caught.value.expected_revision == info.source_revision
++    assert caught.value.actual_revision == actual_revision
++    manager.fetch_pocket_voice_prompt.assert_not_called()
