@@ -1,0 +1,953 @@
+ .github/workflows/tests.yml        |  38 ++++++++++++++
+ README.md                          |  23 +++++----
+ docs/architecture.md               |  10 +++-
+ pocketsynth/__init__.py            |  22 ++++++++
+ pocketsynth/api_contract.py        |  57 +++++++++++++++++++++
+ pocketsynth/discovery.py           |  57 +++++++++++++++++++++
+ pocketsynth/runtime.py             |  63 ++++++++++++++++-------
+ pocketsynth/types.py               |  30 +++++++++++
+ tests/test_discovery.py            |  71 +++++++++++++++++++++++++-
+ tests/test_request_api_contract.py |  79 +++++++++++++++++++++++++++++
+ tests/test_runtime_strict.py       | 101 +++++++++++++++++++++++++++++++++++++
+ tests/test_types.py                |  32 ++++++++++++
+ tests/wheel_api_smoke.py           |  39 ++++++++++++++
+ 13 files changed, 591 insertions(+), 31 deletions(-)
+
+diff --git a/.github/workflows/tests.yml b/.github/workflows/tests.yml
+index aeed9d9..4ff681a 100644
+--- a/.github/workflows/tests.yml
++++ b/.github/workflows/tests.yml
+@@ -26,6 +26,44 @@ jobs:
+       run: python -m mypy --config-file pyproject.toml pocketsynth
+     - name: Tests
+       run: pytest
++  python314-public-api:
++    runs-on: ubuntu-latest
++    steps:
++    - uses: actions/checkout@v4
++    - name: Setup Python 3.14
++      uses: actions/setup-python@v5
++      with:
++        python-version: "3.14"
++    - name: Install package and test dependencies
++      run: |
++        python -m pip install pytest
++        python -m pip install -e .
++    - name: Test no-model public API on Python 3.14
++      run: >-
++        python -m pytest -q
++        tests/test_request_api_contract.py
++        tests/test_package_boundary.py
++        tests/test_discovery.py
++  installed-wheel-smoke:
++    runs-on: ubuntu-latest
++    steps:
++    - uses: actions/checkout@v4
++    - name: Setup Python
++      uses: actions/setup-python@v5
++      with:
++        python-version: "3.13"
++    - name: Install build tooling
++      run: python -m pip install build
++    - name: Build wheel
++      run: python -m build --wheel
++    - name: Install wheel into a clean virtual environment
++      run: |
++        python -m venv /tmp/pocketsynth-wheel
++        /tmp/pocketsynth-wheel/bin/python -m pip install dist/*.whl
++    - name: Smoke-test installed public API without model assets
++      run: |
++        cd /tmp
++        /tmp/pocketsynth-wheel/bin/python -I "$GITHUB_WORKSPACE/tests/wheel_api_smoke.py"
+   onnxvoice-compatibility:
+     runs-on: ubuntu-latest
+     strategy:
+diff --git a/README.md b/README.md
+index 434b4fc..eb813e3 100644
+--- a/README.md
++++ b/README.md
+@@ -29,20 +29,25 @@ Use `PocketRuntime` for a reusable local or managed bundle session. Prepare a vo
+ from pocketsynth import PocketRuntime, SynthesisRequest
+
+ with PocketRuntime.from_pretrained("english_2026-04") as runtime:
+-    voice = runtime.prepare_voice("alba")
+-    result = runtime.synthesize(
+-        SynthesisRequest(
+-            id="line-001",
+-            text="Hello from Pocket.",
+-            language="en",
+-        ),
+-        voice=voice,
++    request = SynthesisRequest(
++        id="line-001",
++        text="Hello from Pocket.",
++        language="en",
+     )
++    measure = runtime.measure_request(request)
++    print(measure.amount, measure.maximum, measure.fits)
++    voice = runtime.prepare_voice("alba")
++    result = runtime.synthesize(request, voice=voice)
+     result.save_wav("example-artifacts/hello.wav")
+ ```
+
+ `PocketRuntime.synthesize()` is strict and atomic. It encodes the complete request once, then either performs one inference or raises `SynthesisInputTooLongError`. It never splits text. `config=` accepts a validated `GenerationConfig`; `synthesize_text()` is a strict plain-text wrapper that prepares non-`PreparedVoice` inputs.
+
++`runtime.measure_request(request)` validates and encodes the complete request without preparing a voice, fetching assets, inferring, or splitting text. It returns a public `RequestMeasure` with `amount`, `maximum`, `unit` (`"tokens"`), and `fits`; an oversized measurement reports `fits=False`, while `synthesize()` still raises `SynthesisInputTooLongError` before inference. Measurement and synthesis share their request encoding path, so callers do not need to inspect `runtime.frontend` or `runtime.metadata`.
++
++
++`request_api_contract()` returns the versioned public capability declaration (`REQUEST_API_VERSION == 1`), including caller-owned text boundaries and the features supported by this engine. Creating the descriptor does not inspect assets or open a runtime. Import `AssetError`, `AssetDownloadError`, `AssetAccessError`, `AssetCacheError`, `CatalogUnavailableError`, `OfflineAssetError`, `SessionCreationError`, and `RuntimeCapabilityError` from `pocketsynth` for typed handling of public asset/runtime failures.
++
+ `PocketRuntime.load(directory)` opens a local bundle without catalog access or network activity. `PocketRuntime.from_pretrained(bundle)` resolves and opens a managed bundle through OnnxVoice.
+
+ Document-friendly splitting is available only from the explicit convenience module:
+@@ -113,7 +118,7 @@ with PocketRuntime.from_pretrained("english_2026-04") as runtime:
+     # identity['prepared_sha256'] is the normalized audio fingerprint.
+ ```
+
+-`list_voice_prompts()` and `inspect_voice_prompt()` return typed prompt metadata without requiring a runtime, installing a bundle, or fetching WAVs. `discover_bundles()` similarly returns PocketSynth-owned `DiscoveredBundle` and `DiscoveredVoice` records without installing or opening a bundle. `runtime_identity(bundle)` reports PocketSynth and OnnxVoice versions and the bundle revision without opening a model; OnnxVoice 0.2.2 does not expose a separate catalog revision, so `catalog_revision` is `None`. The discovery APIs accept explicit `offline` and `refresh` options; `runtime_identity()` only reads installed package metadata. The runtime list/inspect wrappers remain available, but standalone functions are the metadata-discovery entry points.
++`list_voice_prompts()` and `inspect_voice_prompt()` return typed prompt metadata without requiring a runtime, installing a bundle, or fetching WAVs. `discover_bundles()` similarly returns PocketSynth-owned `DiscoveredBundle` and `DiscoveredVoice` records without installing or opening a bundle; the DTOs validate catalog fields, and `DiscoveredBundle.metadata` is a copied read-only mapping. `runtime_identity(bundle)` reports `engine_version`, `runtime_revision`, `request_api_version`, `catalog_revision`, and `bundle_revision` without opening a model; OnnxVoice 0.2.2 does not expose a separate catalog revision, so `catalog_revision` is `None`. The discovery APIs accept explicit `offline` and `refresh` options; `runtime_identity()` only reads installed package metadata. The runtime list/inspect wrappers remain available, but standalone functions are the metadata-discovery entry points.
+
+ The CLI supports metadata-only prompt listing and direct prompt inspection. Filters include `--dataset`, `--variant`, `--license`, and `--offline`:
+
+diff --git a/docs/architecture.md b/docs/architecture.md
+index 42c758e..ff4be6b 100644
+--- a/docs/architecture.md
++++ b/docs/architecture.md
+@@ -63,6 +63,12 @@ pocketsynth.convenience.synthesize_with_runtime(...)
+
+ `PocketRuntime.iter_chunks()` is an explicit chunked-rendering operation. It divides only at Pocket model limits and does not perform sentence segmentation. The convenience module owns calls to `split_text_for_synthesis`; strict runtime modules do not import it. Convenience functions return `RenderedSegment` and must not be mistaken for atomic synthesis.
+
++## Request measurement and public API contract
++
++`PocketRuntime.measure_request(request)` accepts the same caller-shaped `SynthesisRequest` as strict synthesis, applies the same request/text/language/unsupported-feature validation, and encodes the complete text once. It returns `RequestMeasure(amount, maximum, unit="tokens", fits=...)`; an oversized request has `fits=False` without raising a capacity exception. Synthesis consumes the same private encoded-request helper and raises `SynthesisInputTooLongError` before inference when that measurement does not fit. Measurement does not prepare voices, download assets, perform inference, or call either model or sentence splitters.
++
++The root package exports `RequestMeasure`, `REQUEST_API_VERSION`, `RequestApiContract`, and `request_api_contract()`. Contract version 1 declares the request/result/runtime types and public method names, caller-owned text boundaries, and explicit capability flags. Building the descriptor does not inspect files or caches, install a bundle, open a runtime, or prepare a voice. Pocket supports named, reference, and managed reference voices and voice-level configuration; it does not support linguistic tokens, pronunciation overrides, whole-request phonemes, or word timings. Typed public asset/catalog/session/runtime errors are also exported from the package root.
++
+ ## Runtime and bundle lifecycle
+
+ `PocketRuntime.load(directory)` opens a concrete local bundle without network access. `PocketRuntime.from_pretrained(bundle)` resolves and opens a managed bundle through OnnxVoice. Both expose bundle metadata, language, sample rate, predefined voices, voice preparation, token inference, diagnostics, and idempotent close/context-manager lifecycle.
+@@ -75,13 +81,13 @@ An explicit request language is a compatibility assertion against the active bun
+
+ ### Metadata-only discovery and pinned managed voices
+
+-`list_voice_prompts()` and `inspect_voice_prompt(ref)` are standalone public APIs returning PocketSynth-owned `VoicePromptInfo` records. They use OnnxVoice catalog metadata. `list_voice_prompts()` supports cache and catalog paths, offline and refresh modes, dataset/variant/license filters, and progress callbacks. `inspect_voice_prompt()` supports cache and catalog paths plus offline and refresh modes. They do not require a `PocketRuntime`, install a bundle, open an ONNX session, or fetch prompt WAVs. `discover_bundles()` returns `DiscoveredBundle` and `DiscoveredVoice` records, accepts language and cache/catalog/offline/refresh/progress options, and does not install or open a bundle. `BundleAssetManager` remains available for advanced installation and resolution; the DTO discovery functions are the stable metadata boundary.
++`list_voice_prompts()` and `inspect_voice_prompt(ref)` are standalone public APIs returning PocketSynth-owned `VoicePromptInfo` records. They use OnnxVoice catalog metadata. `list_voice_prompts()` supports cache and catalog paths, offline and refresh modes, dataset/variant/license filters, and progress callbacks. `inspect_voice_prompt()` supports cache and catalog paths plus offline and refresh modes. They do not require a `PocketRuntime`, install a bundle, open an ONNX session, or fetch prompt WAVs. `discover_bundles()` returns `DiscoveredBundle` and `DiscoveredVoice` records, accepts language and cache/catalog/offline/refresh/progress options, and does not install or open a bundle. `BundleAssetManager` remains available for advanced installation and resolution; the DTO discovery functions are the stable metadata boundary: `DiscoveredBundle` and `DiscoveredVoice` validate catalog fields, and bundle records expose a copied read-only top-level metadata mapping.
+
+ `VoicePromptInfo.sha256` and `source_revision` identify the catalog prompt artifact. `PocketRuntime.prepare_voice(ref)` keeps the convenient current-catalog behavior. `PocketRuntime.prepare_voice(info)` first re-inspects the reference and compares the pinned catalog identity before fetching audio. A changed reference raises `VoicePromptChangedError` instead of silently preparing a newer prompt. OnnxVoice remains responsible for fetching the WAV, cache integrity, and offline asset errors.
+
+ A managed `PreparedVoice` exposes its typed `voice_prompt`; its `source_revision` and `bundle_revision` refer to the active Pocket bundle, not the prompt. Its `identity` has kind `managed_reference`, with `source_sha256` for the catalog WAV and `prepared_sha256` for the normalized float32 audio fingerprint after decoding, downmixing, resampling, and normalization. These hashes are deliberately distinct. Local reference and predefined voice identities keep their existing semantics.
+
+-`runtime_identity(bundle=None)` reports PocketSynth's `engine_version`, the installed OnnxVoice `runtime_revision`, an optional `catalog_revision`, and the selected `bundle_revision`. It reads package metadata only and does not open a model. OnnxVoice 0.2.2 exposes bundle revisions but no separate catalog revision, so PocketSynth returns `catalog_revision=None` rather than inventing one. The supported dependency range remains `onnxvoice>=0.2.2,<0.3`.
++`runtime_identity(bundle=None)` reports PocketSynth's `engine_version`, the installed OnnxVoice `runtime_revision`, `request_api_version`, an optional `catalog_revision`, and the selected `bundle_revision`. It reads package metadata only, is deterministic, excludes cache/absolute paths and process-specific values, and does not open a model. OnnxVoice 0.2.2 exposes bundle revisions but no separate catalog revision, so PocketSynth returns `catalog_revision=None` rather than inventing one. The supported dependency range remains `onnxvoice>=0.2.2,<0.3`.
+
+ The basic workflow prepares the current catalog entry; the pinned workflow inspects metadata before opening a runtime and then passes that record to `prepare_voice()`. Prompt inspection and fetching are separate stages.
+ Voice-level configuration can leave audio unchanged, apply a catalog calibration, or explicitly override gain. Missing calibration is reported in metadata; PocketSynth does not invent measurements or measure loudness per request.
+diff --git a/pocketsynth/__init__.py b/pocketsynth/__init__.py
+index 61ee77a..f024703 100644
+--- a/pocketsynth/__init__.py
++++ b/pocketsynth/__init__.py
+@@ -10,6 +10,7 @@ except ImportError:
+     except Exception:
+         __version__ = "0.0.0"
+
++from .api_contract import REQUEST_API_VERSION, RequestApiContract, request_api_contract
+ from .asset_manager import BundleAssetManager
+ from .asset_progress import AssetProgressCallback, AssetProgressEvent, ConsoleAssetProgress
+ from .assets import PocketBundle
+@@ -18,9 +19,14 @@ from .config import GenerationConfig
+ from .diagnostics import RuntimeDiagnostics, SynthesisTiming
+ from .discovery import DiscoveredBundle, DiscoveredVoice, discover_bundles, runtime_identity
+ from .errors import (
++    AssetAccessError,
++    AssetCacheError,
++    AssetDownloadError,
++    AssetError,
+     BundleError,
+     BundleLanguageError,
+     BundleNotFoundError,
++    CatalogUnavailableError,
+     EmptyTextError,
+     InvalidGenerationConfigError,
+     InvalidLanguageError,
+@@ -28,9 +34,12 @@ from .errors import (
+     InvalidVoiceError,
+     InvalidVoicePromptMetadataError,
+     ModelInferenceError,
++    OfflineAssetError,
+     OptionalDependencyError,
+     PocketSynthError,
++    RuntimeCapabilityError,
+     RuntimeClosedError,
++    SessionCreationError,
+     SynthesisError,
+     SynthesisInputTooLongError,
+     UnsupportedBundleError,
+@@ -44,6 +53,7 @@ from .types import (
+     PronunciationOverride,
+     RenderedChunk,
+     RenderedSegment,
++    RequestMeasure,
+     SynthesisRequest,
+     SynthesisResult,
+     SynthesisSegment,
+@@ -59,6 +69,10 @@ from .voice_level import (
+ from .voice_prompts import VoicePromptInfo, inspect_voice_prompt, list_voice_prompts
+
+ __all__ = [
++    "AssetAccessError",
++    "AssetCacheError",
++    "AssetDownloadError",
++    "AssetError",
+     "AssetProgressCallback",
+     "AssetProgressEvent",
+     "BundleAssetManager",
+@@ -67,6 +81,7 @@ __all__ = [
+     "BundleMetadata",
+     "BundleNotFoundError",
+     "BundlePaths",
++    "CatalogUnavailableError",
+     "ConsoleAssetProgress",
+     "DiscoveredBundle",
+     "DiscoveredVoice",
+@@ -79,6 +94,7 @@ __all__ = [
+     "InvalidVoicePromptMetadataError",
+     "LinguisticToken",
+     "ModelInferenceError",
++    "OfflineAssetError",
+     "OptionalDependencyError",
+     "PocketBundle",
+     "PocketRuntime",
+@@ -87,8 +103,13 @@ __all__ = [
+     "PronunciationOverride",
+     "RenderedChunk",
+     "RenderedSegment",
++    "REQUEST_API_VERSION",
++    "RequestApiContract",
++    "RequestMeasure",
++    "RuntimeCapabilityError",
+     "RuntimeClosedError",
+     "RuntimeDiagnostics",
++    "SessionCreationError",
+     "SynthesisError",
+     "SynthesisInputTooLongError",
+     "SynthesisRequest",
+@@ -108,5 +129,6 @@ __all__ = [
+     "inspect_voice_prompt",
+     "list_voice_prompts",
+     "runtime_identity",
++    "request_api_contract",
+     "WordTiming",
+ ]
+diff --git a/pocketsynth/api_contract.py b/pocketsynth/api_contract.py
+new file mode 100644
+index 0000000..5d96f1c
+--- /dev/null
++++ b/pocketsynth/api_contract.py
+@@ -0,0 +1,57 @@
++from __future__ import annotations
++
++from dataclasses import dataclass
++from typing import Any
++
++REQUEST_API_VERSION = 1
++
++
++@dataclass(frozen=True, slots=True)
++class RequestApiContract:
++    """Dependency-light declaration of PocketSynth's public request API."""
++
++    version: int
++    request_type: type[Any]
++    result_type: type[Any]
++    runtime_type: type[Any]
++    synthesis_method: str
++    measurement_method: str
++    discovery_method: str
++    runtime_identity_method: str
++    caller_owns_text_boundaries: bool
++    supports_linguistic_tokens: bool
++    supports_pronunciation_overrides: bool
++    supports_whole_request_phonemes: bool
++    supports_named_voices: bool
++    supports_reference_voice: bool
++    supports_managed_reference_voice: bool
++    supports_word_timings: bool
++    supports_voice_level: bool
++    supports_request_measurement: bool
++
++
++def request_api_contract() -> RequestApiContract:
++    """Return the PocketSynth request API declaration without opening a runtime."""
++    from .runtime import PocketRuntime
++    from .types import SynthesisRequest, SynthesisResult
++
++    return RequestApiContract(
++        version=REQUEST_API_VERSION,
++        request_type=SynthesisRequest,
++        result_type=SynthesisResult,
++        runtime_type=PocketRuntime,
++        synthesis_method="synthesize",
++        measurement_method="measure_request",
++        discovery_method="discover_bundles",
++        runtime_identity_method="runtime_identity",
++        caller_owns_text_boundaries=True,
++        supports_linguistic_tokens=False,
++        supports_pronunciation_overrides=False,
++        supports_whole_request_phonemes=False,
++        supports_named_voices=True,
++        supports_reference_voice=True,
++        supports_managed_reference_voice=True,
++        supports_word_timings=False,
++        supports_voice_level=True,
++        supports_request_measurement=True,
++    )
+diff --git a/pocketsynth/discovery.py b/pocketsynth/discovery.py
+index e8de7a6..ebd51d0 100644
+--- a/pocketsynth/discovery.py
++++ b/pocketsynth/discovery.py
+@@ -4,6 +4,7 @@ from collections.abc import Mapping, Sequence
+ from dataclasses import dataclass, field
+ from importlib.metadata import version
+ from pathlib import Path
++from types import MappingProxyType
+ from typing import Any
+
+ from ._onnxvoice import list_pocket_bundles
+@@ -11,6 +12,20 @@ from .asset_progress import AssetProgressCallback
+ from .assets import PocketBundle
+
+
++def _require_nonempty_string(value: object, name: str) -> None:
++    if not isinstance(value, str) or not value.strip():
++        raise ValueError(f"{name} must be a non-empty string")
++
++
++def _string_tuple(value: object, name: str) -> tuple[str, ...]:
++    if not isinstance(value, Sequence) or isinstance(value, (str, bytes)):
++        raise ValueError(f"{name} must be a sequence of non-empty strings")
++    result = tuple(value)
++    if any(not isinstance(item, str) or not item.strip() for item in result):
++        raise ValueError(f"{name} must contain only non-empty strings")
++    return result
++
++
+ @dataclass(frozen=True, slots=True)
+ class DiscoveredVoice:
+     """Catalog metadata for a predefined voice declared by a Pocket bundle."""
+@@ -21,6 +36,10 @@ class DiscoveredVoice:
+     locale: str = "unknown"
+     language_label: str = "unknown"
+
++    def __post_init__(self) -> None:
++        for name in ("id", "gender", "language", "locale", "language_label"):
++            _require_nonempty_string(getattr(self, name), name)
++
+
+ @dataclass(frozen=True, slots=True)
+ class DiscoveredBundle:
+@@ -40,6 +59,42 @@ class DiscoveredBundle:
+     voice_details: tuple[DiscoveredVoice, ...] = ()
+     metadata: Mapping[str, Any] = field(default_factory=dict)
+
++    def __post_init__(self) -> None:
++        for name in ("id", "ref", "display_name", "language"):
++            _require_nonempty_string(getattr(self, name), name)
++
++        for name in ("aliases", "precisions", "predefined_voices"):
++            object.__setattr__(self, name, _string_tuple(getattr(self, name), name))
++
++        if self.sample_rate is not None and (
++            isinstance(self.sample_rate, bool)
++            or not isinstance(self.sample_rate, int)
++            or self.sample_rate <= 0
++        ):
++            raise ValueError("sample_rate must be a positive integer or None")
++        if self.default_voice is not None:
++            _require_nonempty_string(self.default_voice, "default_voice")
++        if self.source_revision is not None:
++            _require_nonempty_string(self.source_revision, "source_revision")
++        if self.max_tokens is not None and (
++            isinstance(self.max_tokens, bool)
++            or not isinstance(self.max_tokens, int)
++            or self.max_tokens <= 0
++        ):
++            raise ValueError("max_tokens must be a positive integer or None")
++
++        if not isinstance(self.voice_details, Sequence) or isinstance(
++            self.voice_details, (str, bytes)
++        ):
++            raise ValueError("voice_details must be a sequence of DiscoveredVoice values")
++        voice_details = tuple(self.voice_details)
++        if any(not isinstance(item, DiscoveredVoice) for item in voice_details):
++            raise ValueError("voice_details must contain only DiscoveredVoice values")
++        object.__setattr__(self, "voice_details", voice_details)
++
++        if not isinstance(self.metadata, Mapping):
++            raise ValueError("metadata must be a mapping")
++        object.__setattr__(self, "metadata", MappingProxyType(dict(self.metadata)))
+
+ def _voice_details(metadata: Mapping[str, Any]) -> tuple[DiscoveredVoice, ...]:
+     raw_details = metadata.get("voice_details", ())
+@@ -132,10 +187,12 @@ def runtime_identity(
+ ) -> dict[str, str | None]:
+     """Return PocketSynth and OnnxVoice version identity without opening a model."""
+     from . import __version__
++    from .api_contract import REQUEST_API_VERSION
+
+     return {
+         "engine_version": __version__,
+         "runtime_revision": version("onnxvoice"),
++        "request_api_version": str(REQUEST_API_VERSION),
+         "catalog_revision": None,
+         "bundle_revision": bundle.source_revision if bundle is not None else None,
+     }
+diff --git a/pocketsynth/runtime.py b/pocketsynth/runtime.py
+index 4332928..7357f84 100644
+--- a/pocketsynth/runtime.py
++++ b/pocketsynth/runtime.py
+@@ -2,7 +2,7 @@ from __future__ import annotations
+
+ import time
+ from collections.abc import Iterator, Mapping, Sequence
+-from dataclasses import asdict, replace
++from dataclasses import asdict, dataclass, replace
+ from pathlib import Path
+ from typing import Any
+
+@@ -40,6 +40,7 @@ from .language import bundle_language as resolve_bundle_language
+ from .language import normalize_language
+ from .types import (
+     RenderedChunk,
++    RequestMeasure,
+     SynthesisRequest,
+     SynthesisResult,
+     SynthesisSegment,
+@@ -51,6 +52,13 @@ from .voice_prompts import inspect_voice_prompt as query_inspect_voice_prompt
+ from .voice_prompts import list_voice_prompts as query_voice_prompts
+
+
++@dataclass(frozen=True, slots=True)
++class _EncodedRequest:
++    language: str
++    token_ids: tuple[int, ...]
++    measure: RequestMeasure
++
++
+ class PocketRuntime:
+     """Low-level Pocket bundle runtime backed by an OnnxVoice PocketAdapter."""
+
+@@ -396,15 +404,7 @@ class PocketRuntime:
+                 sample_rate=self.sample_rate,
+             )
+
+-    def synthesize(
+-        self,
+-        request: SynthesisRequest,
+-        *,
+-        voice: PreparedVoice,
+-        config: GenerationConfig | None = None,
+-        voice_level: VoiceLevelConfig | None = None,
+-    ) -> SynthesisResult:
+-        """Render one complete request with one encoding and at most one inference."""
++    def _validate_request(self, request: SynthesisRequest) -> str:
+         self._ensure_open()
+         if not isinstance(request, SynthesisRequest):
+             raise InvalidRequestError("request must be a SynthesisRequest")
+@@ -414,7 +414,34 @@ class PocketRuntime:
+             raise UnsupportedFeatureError(feature="linguistic_tokens")
+         if request.pronunciation_overrides:
+             raise UnsupportedFeatureError(feature="pronunciation_overrides")
+-        language = self._validate_language(request.language)
++        return self._validate_language(request.language)
++
++    def _encode_request(self, request: SynthesisRequest, language: str) -> _EncodedRequest:
++        token_ids = tuple(self.frontend.encode(request.text))
++        if not token_ids:
++            raise EmptyTextError("request text produced no Pocket tokens")
++        measure = RequestMeasure(
++            amount=len(token_ids),
++            maximum=self.metadata.max_token_per_chunk,
++        )
++        return _EncodedRequest(language=language, token_ids=token_ids, measure=measure)
++
++    def measure_request(self, request: SynthesisRequest) -> RequestMeasure:
++        """Measure one complete request without voice preparation or inference."""
++        language = self._validate_request(request)
++        return self._encode_request(request, language).measure
++
++
++    def synthesize(
++        self,
++        request: SynthesisRequest,
++        *,
++        voice: PreparedVoice,
++        config: GenerationConfig | None = None,
++        voice_level: VoiceLevelConfig | None = None,
++    ) -> SynthesisResult:
++        """Render one complete request with one encoding and at most one inference."""
++        language = self._validate_request(request)
+         generation = GenerationConfig() if config is None else config
+         if not isinstance(generation, GenerationConfig):
+             raise InvalidGenerationConfigError("config must be a GenerationConfig")
+@@ -434,19 +461,17 @@ class PocketRuntime:
+
+         started = time.perf_counter()
+         frontend_started = time.perf_counter()
+-        token_ids = self.frontend.encode(request.text)
++        encoded = self._encode_request(request, language)
+         frontend_ms = (time.perf_counter() - frontend_started) * 1000
+-        if not token_ids:
+-            raise EmptyTextError("request text produced no Pocket tokens")
+-        max_tokens = self.metadata.max_token_per_chunk
+-        if len(token_ids) > max_tokens:
++        token_ids = encoded.token_ids
++        if encoded.measure.fits is False:
++            assert encoded.measure.maximum is not None
+             raise SynthesisInputTooLongError(
+                 text_length=len(request.text),
+-                token_count=len(token_ids),
+-                max_tokens=max_tokens,
++                token_count=encoded.measure.amount,
++                max_tokens=encoded.measure.maximum,
+                 bundle_id=self.bundle_id,
+             )
+-
+         inference_started = time.perf_counter()
+         audio = self._infer_tokens_unchecked(token_ids, voice, generation)
+         inference_ms = (time.perf_counter() - inference_started) * 1000
+diff --git a/pocketsynth/types.py b/pocketsynth/types.py
+index 35a1958..b8f8ba8 100644
+--- a/pocketsynth/types.py
++++ b/pocketsynth/types.py
+@@ -119,6 +119,36 @@ class SynthesisRequest:
+         object.__setattr__(self, "pronunciation_overrides", overrides)
+
+
++@dataclass(frozen=True, slots=True)
++class RequestMeasure:
++    """Encoded request size relative to the active Pocket bundle capacity."""
++
++    amount: int
++    maximum: int | None
++    unit: Literal["tokens"] = "tokens"
++    fits: bool | None = None
++
++    def __post_init__(self) -> None:
++        if isinstance(self.amount, bool) or not isinstance(self.amount, int) or self.amount < 0:
++            raise InvalidRequestError("amount must be a non-negative integer")
++
++        if self.maximum is not None and (
++            isinstance(self.maximum, bool)
++            or not isinstance(self.maximum, int)
++            or self.maximum <= 0
++        ):
++            raise InvalidRequestError("maximum must be a positive integer or None")
++
++        if self.unit != "tokens":
++            raise InvalidRequestError("unit must be 'tokens'")
++
++        expected = None if self.maximum is None else self.amount <= self.maximum
++        if self.fits is not None and self.fits != expected:
++            raise InvalidRequestError("fits must match amount and maximum")
++
++        object.__setattr__(self, "fits", expected)
++
++
+ @dataclass(frozen=True, slots=True)
+ class WordTiming:
+     """Timing span for one source-text word, when an engine provides timestamps."""
+diff --git a/tests/test_discovery.py b/tests/test_discovery.py
+index 81415c1..a090d4e 100644
+--- a/tests/test_discovery.py
++++ b/tests/test_discovery.py
+@@ -4,7 +4,9 @@ from pathlib import Path
+ from types import SimpleNamespace
+ from unittest.mock import MagicMock, patch
+
+-from pocketsynth import __version__
++import pytest
++
++from pocketsynth import REQUEST_API_VERSION, __version__
+ from pocketsynth.assets import PocketBundle
+ from pocketsynth.discovery import (
+     DiscoveredBundle,
+@@ -44,6 +46,70 @@ def catalog_item() -> SimpleNamespace:
+     )
+
+
++def discovered_bundle(**changes: object) -> DiscoveredBundle:
++    values: dict[str, object] = {
++        "id": "english",
++        "ref": "pocket:english",
++        "display_name": "English",
++        "aliases": ("en",),
++        "language": "en",
++        "sample_rate": 24_000,
++        "precisions": ("int8",),
++        "predefined_voices": ("alba",),
++        "default_voice": "alba",
++        "source_revision": "revision-1",
++        "max_tokens": 512,
++    }
++    values.update(changes)
++    return DiscoveredBundle(**values)  # type: ignore[arg-type]
++
++
++@pytest.mark.parametrize(
++    "changes",
++    [
++        {"id": ""},
++        {"ref": " "},
++        {"display_name": None},
++        {"language": ""},
++        {"aliases": "en"},
++        {"aliases": ("",)},
++        {"sample_rate": 0},
++        {"sample_rate": True},
++        {"precisions": ("",)},
++        {"predefined_voices": (None,)},
++        {"default_voice": " "},
++        {"source_revision": ""},
++        {"max_tokens": 0},
++        {"max_tokens": True},
++        {"voice_details": (object(),)},
++        {"metadata": []},
++    ],
++)
++def test_discovered_bundle_rejects_invalid_fields(changes: dict[str, object]) -> None:
++    with pytest.raises(ValueError):
++        discovered_bundle(**changes)
++
++
++@pytest.mark.parametrize(
++    "field",
++    ["id", "gender", "language", "locale", "language_label"],
++)
++def test_discovered_voice_rejects_empty_fields(field: str) -> None:
++    with pytest.raises(ValueError):
++        values = {"id": "voice", field: " "}
++        DiscoveredVoice(**values)  # type: ignore[arg-type]
++
++
++def test_discovered_bundle_copies_metadata_to_a_read_only_mapping() -> None:
++    metadata = {"nested": "value"}
++    bundle = discovered_bundle(metadata=metadata)
++    metadata["later"] = "change"
++
++    assert bundle.metadata == {"nested": "value"}
++    with pytest.raises(TypeError):
++        bundle.metadata["new"] = "value"  # type: ignore[index]
++
++
+ def test_discover_bundles_returns_normalized_pocketsynth_owned_metadata(tmp_path: Path) -> None:
+     item = catalog_item()
+     progress = MagicMock()
+@@ -151,13 +217,16 @@ def test_runtime_identity_uses_versions_and_separate_bundle_revision() -> None:
+
+     with patch("pocketsynth.discovery.version", return_value="0.2.2"):
+         identity = runtime_identity(bundle)
++        identity_again = runtime_identity(bundle)
+
+     assert identity == {
+         "engine_version": __version__,
+         "runtime_revision": "0.2.2",
++        "request_api_version": str(REQUEST_API_VERSION),
+         "catalog_revision": None,
+         "bundle_revision": "bundle-revision",
+     }
++    assert identity_again == identity
+
+
+ def test_runtime_identity_supports_installed_bundle_and_no_bundle() -> None:
+diff --git a/tests/test_request_api_contract.py b/tests/test_request_api_contract.py
+new file mode 100644
+index 0000000..550ce9d
+--- /dev/null
++++ b/tests/test_request_api_contract.py
+@@ -0,0 +1,79 @@
++from __future__ import annotations
++
++import subprocess
++import sys
++from pathlib import Path
++
++from pocketsynth import (
++    REQUEST_API_VERSION,
++    PocketRuntime,
++    RequestApiContract,
++    SynthesisRequest,
++    SynthesisResult,
++    request_api_contract,
++)
++
++ROOT = Path(__file__).resolve().parents[1]
++PUBLIC_RUNTIME_ERRORS = (
++    "AssetError",
++    "AssetDownloadError",
++    "AssetAccessError",
++    "AssetCacheError",
++    "CatalogUnavailableError",
++    "OfflineAssetError",
++    "SessionCreationError",
++    "RuntimeCapabilityError",
++)
++
++
++def test_request_api_contract_is_public() -> None:
++    contract = request_api_contract()
++
++    assert REQUEST_API_VERSION == 1
++    assert isinstance(contract, RequestApiContract)
++    assert contract.version == REQUEST_API_VERSION
++    assert contract.request_type is SynthesisRequest
++    assert contract.result_type is SynthesisResult
++    assert contract.runtime_type is PocketRuntime
++    assert (
++        contract.synthesis_method,
++        contract.measurement_method,
++        contract.discovery_method,
++        contract.runtime_identity_method,
++    ) == ("synthesize", "measure_request", "discover_bundles", "runtime_identity")
++
++
++def test_request_api_contract_declares_atomic_caller_owned_boundaries() -> None:
++    contract = request_api_contract()
++
++    assert contract.caller_owns_text_boundaries is True
++    assert contract.supports_linguistic_tokens is False
++    assert contract.supports_pronunciation_overrides is False
++    assert contract.supports_whole_request_phonemes is False
++    assert contract.supports_named_voices is True
++    assert contract.supports_reference_voice is True
++    assert contract.supports_managed_reference_voice is True
++    assert contract.supports_word_timings is False
++    assert contract.supports_voice_level is True
++    assert contract.supports_request_measurement is True
++
++
++def test_required_public_runtime_errors_are_exported_from_package_root() -> None:
++    import pocketsynth
++
++    for name in PUBLIC_RUNTIME_ERRORS:
++        assert getattr(pocketsynth, name) is not None
++        assert name in pocketsynth.__all__
++
++
++def test_request_api_contract_import_is_dependency_light() -> None:
++    code = """
++import sys
++from pocketsynth import request_api_contract
++contract = request_api_contract()
++assert contract.version == 1
++assert 'onnxvoice' not in sys.modules
++assert 'pocketsynth.convenience' not in sys.modules
++assert 'pocketsynth.text_split' not in sys.modules
++"""
++    subprocess.run([sys.executable, "-c", code], cwd=ROOT, check=True)
+diff --git a/tests/test_runtime_strict.py b/tests/test_runtime_strict.py
+index 938738f..39d30e4 100644
+--- a/tests/test_runtime_strict.py
++++ b/tests/test_runtime_strict.py
+@@ -166,6 +166,107 @@ def test_token_count_over_model_limit_fails_before_inference() -> None:
+     assert caught.value.bundle_id == "english-test"
+
+
++
++def test_measure_request_encodes_once_without_inference_or_splitting() -> None:
++    runtime, frontend, backend = make_runtime(max_tokens=5)
++    request = SynthesisRequest(id="measured", text="hello")
++    runtime.prepare_voice = lambda _source: pytest.fail("voice prepared during request measurement")  # type: ignore[method-assign]
++
++    with (
++        patch.object(
++            frontend,
++            "split_for_model",
++            side_effect=AssertionError("model splitting called"),
++        ),
++        patch(
++            "phrasplit.split_sentences",
++            side_effect=AssertionError("Phrasplit called"),
++        ),
++    ):
++        measure = runtime.measure_request(request)
++
++    assert (measure.amount, measure.maximum, measure.unit, measure.fits) == (
++        5,
++        5,
++        "tokens",
++        True,
++    )
++    assert frontend.encoded == [request.text]
++    assert backend.calls == []
++
++
++def test_measure_request_reports_oversized_request_without_rendering() -> None:
++    runtime, frontend, backend = make_runtime(max_tokens=5)
++    request = SynthesisRequest(id="too-long", text="hello!")
++
++    measure = runtime.measure_request(request)
++
++    assert measure.amount == 6
++    assert measure.maximum == 5
++    assert measure.fits is False
++    assert frontend.encoded == [request.text]
++    assert backend.calls == []
++
++    with pytest.raises(SynthesisInputTooLongError) as caught:
++        runtime.synthesize(request, voice=make_voice())
++    assert measure.maximum == caught.value.max_tokens
++    assert backend.calls == []
++
++
++def test_measurement_matches_synthesis_token_count() -> None:
++    runtime, frontend, backend = make_runtime(max_tokens=5)
++    request = SynthesisRequest(id="at-limit", text="hello")
++
++    measure = runtime.measure_request(request)
++    result = runtime.synthesize(request, voice=make_voice())
++
++    assert measure.fits is True
++    assert measure.amount == result.metadata["token_count"]
++    assert frontend.encoded == [request.text, request.text]
++    assert len(backend.calls) == 1
++
++
++def test_measure_request_rejects_empty_text_and_wrong_language() -> None:
++    runtime, frontend, backend = make_runtime()
++
++    with pytest.raises(EmptyTextError):
++        runtime.measure_request(SynthesisRequest(id="empty", text=" \t\n"))
++    with pytest.raises(InvalidLanguageError):
++        runtime.measure_request(
++            SynthesisRequest(id="wrong-language", text="bonjour", language="fr")
++        )
++
++    assert frontend.encoded == []
++    assert backend.calls == []
++
++
++@pytest.mark.parametrize(
++    "synthesis_request",
++    [
++        SynthesisRequest(
++            id="tokens",
++            text="hello",
++            tokens=(LinguisticToken(start=0, end=5),),
++        ),
++        SynthesisRequest(
++            id="override",
++            text="hello",
++            pronunciation_overrides=(
++                PronunciationOverride(start=0, end=5, phonemes="həˈloʊ"),
++            ),
++        ),
++    ],
++)
++def test_measure_request_rejects_unsupported_features(synthesis_request: SynthesisRequest) -> None:
++    runtime, frontend, backend = make_runtime()
++
++    with pytest.raises(UnsupportedFeatureError):
++        runtime.measure_request(synthesis_request)
++
++    assert frontend.encoded == []
++    assert backend.calls == []
++
++
+ def test_empty_and_whitespace_requests_fail_before_voice_preparation_or_encoding() -> None:
+     runtime, frontend, backend = make_runtime()
+     runtime.prepare_voice = lambda _source: pytest.fail("voice prepared for empty text")  # type: ignore[method-assign]
+diff --git a/tests/test_types.py b/tests/test_types.py
+index 52d45e5..4a63e39 100644
+--- a/tests/test_types.py
++++ b/tests/test_types.py
+@@ -15,6 +15,7 @@ from pocketsynth.types import (
+     PronunciationOverride,
+     RenderedChunk,
+     RenderedSegment,
++    RequestMeasure,
+     SynthesisRequest,
+     SynthesisResult,
+     SynthesisSegment,
+@@ -135,6 +136,37 @@ def test_synthesis_request_validates_and_normalizes_linguistic_context() -> None
+         )
+
+
++def test_request_measure_derives_fit_and_is_immutable() -> None:
++    fits = RequestMeasure(amount=5, maximum=5)
++    too_large = RequestMeasure(amount=6, maximum=5)
++    unbounded = RequestMeasure(amount=6, maximum=None)
++
++    assert (fits.amount, fits.maximum, fits.unit, fits.fits) == (5, 5, "tokens", True)
++    assert too_large.fits is False
++    assert unbounded.fits is None
++    with pytest.raises(AttributeError):
++        fits.amount = 4  # type: ignore[misc]
++
++
++@pytest.mark.parametrize(
++    "kwargs",
++    [
++        {"amount": -1, "maximum": 5},
++        {"amount": True, "maximum": 5},
++        {"amount": 1.5, "maximum": 5},
++        {"amount": 1, "maximum": 0},
++        {"amount": 1, "maximum": -1},
++        {"amount": 1, "maximum": True},
++        {"amount": 1, "maximum": 1.5},
++        {"amount": 1, "maximum": 5, "unit": "characters"},
++        {"amount": 6, "maximum": 5, "fits": True},
++    ],
++)
++def test_request_measure_rejects_invalid_values(kwargs: dict[str, object]) -> None:
++    with pytest.raises(InvalidRequestError):
++        RequestMeasure(**kwargs)  # type: ignore[arg-type]
++
++
+ def test_strict_synthesis_result_normalizes_audio_and_has_no_chunks() -> None:
+     timing = WordTiming(
+         text="hello",
+diff --git a/tests/wheel_api_smoke.py b/tests/wheel_api_smoke.py
+new file mode 100644
+index 0000000..8b7b292
+--- /dev/null
++++ b/tests/wheel_api_smoke.py
+@@ -0,0 +1,39 @@
++from __future__ import annotations
++
++import sys
++import sysconfig
++from pathlib import Path
++
++import pocketsynth
++
++required = (
++    "PocketRuntime",
++    "SynthesisRequest",
++    "SynthesisResult",
++    "GenerationConfig",
++    "RequestMeasure",
++    "VoiceLevelConfig",
++    "SynthesisInputTooLongError",
++    "BundleAssetManager",
++    "PreparedVoice",
++    "VoicePromptInfo",
++    "discover_bundles",
++    "runtime_identity",
++    "REQUEST_API_VERSION",
++    "request_api_contract",
++)
++
++for name in required:
++    assert getattr(pocketsynth, name) is not None, name
++
++assert pocketsynth.REQUEST_API_VERSION == 1
++assert callable(pocketsynth.PocketRuntime.from_resolved)
++assert callable(pocketsynth.PocketRuntime.prepare_voice)
++assert callable(pocketsynth.PocketRuntime.measure_request)
++assert callable(pocketsynth.PocketRuntime.synthesize)
++assert pocketsynth.request_api_contract().version == 1
++assert "onnxvoice" not in sys.modules
++
++package_file = Path(pocketsynth.__file__).resolve()
++purelib = Path(sysconfig.get_paths()["purelib"]).resolve()
++assert purelib in package_file.parents, (package_file, purelib)

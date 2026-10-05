@@ -1,0 +1,60 @@
+schema_version: 1
+object_type: commit_audit_sheet
+versioning:
+  schema_version: 1
+  revision: 3
+release_version: v0.2.4
+git_base_ref: v0.2.3
+git_base_sha: d55820eeedb47ae3a5837ae3fb701020f765c45e
+git_head_ref: HEAD
+git_head_sha: c7d5f897fa09ee141c79d1aa207a605496c343e9
+git_range: d55820eeedb47ae3a5837ae3fb701020f765c45e..c7d5f897fa09ee141c79d1aa207a605496c343e9
+commit_count: 1
+rows:
+  - sha: c7d5f897fa09ee141c79d1aa207a605496c343e9
+    source_ref: git:c7d5f897fa09ee141c79d1aa207a605496c343e9
+    short_sha: c7d5f89
+    changed_paths:
+      - .github/workflows/tests.yml
+      - README.md
+      - docs/architecture.md
+      - pocketsynth/__init__.py
+      - pocketsynth/api_contract.py
+      - pocketsynth/discovery.py
+      - pocketsynth/runtime.py
+      - pocketsynth/types.py
+      - tests/test_discovery.py
+      - tests/test_request_api_contract.py
+      - tests/test_runtime_strict.py
+      - tests/test_types.py
+      - tests/wheel_api_smoke.py
+    stats:
+      files_changed: 13
+      insertions: 591
+      deletions: 31
+    inspected: true
+    inspected_paths:
+      - .github/workflows/tests.yml
+      - README.md
+      - docs/architecture.md
+      - pocketsynth/__init__.py
+      - pocketsynth/api_contract.py
+      - pocketsynth/discovery.py
+      - pocketsynth/runtime.py
+      - pocketsynth/types.py
+      - tests/test_discovery.py
+      - tests/test_request_api_contract.py
+      - tests/test_runtime_strict.py
+      - tests/test_types.py
+      - tests/wheel_api_smoke.py
+    observed_behavior:
+      Adds a public request API contract and request measurement surface,
+      validates discovery DTOs, exports typed runtime errors, and documents the new
+      behavior; tests cover measurement, API exports, DTO validation, and installed-wheel
+      smoke behavior.
+    public_impact: public
+    decision: accepted
+    stale: false
+    evidence_subject: "feat: add API for readio"
+    target_entry_id: entry-0001
+    notes: ""

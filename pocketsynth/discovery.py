@@ -96,6 +96,7 @@ class DiscoveredBundle:
             raise ValueError("metadata must be a mapping")
         object.__setattr__(self, "metadata", MappingProxyType(dict(self.metadata)))
 
+
 def _voice_details(metadata: Mapping[str, Any]) -> tuple[DiscoveredVoice, ...]:
     raw_details = metadata.get("voice_details", ())
     if not isinstance(raw_details, Sequence) or isinstance(raw_details, (str, bytes)):

@@ -1,0 +1,37 @@
+{
+  "candidate_count": 1,
+  "candidates": [
+    {
+      "additions": 591,
+      "deletions": 31,
+      "patch_file": "c7d5f89.patch",
+      "patch_sha256": "b8198b71264112e578f3100eb9676c277878e2c3b30519b0c30a595ad50ad6a1",
+      "paths": [
+        ".github/workflows/tests.yml",
+        "README.md",
+        "docs/architecture.md",
+        "pocketsynth/__init__.py",
+        "pocketsynth/api_contract.py",
+        "pocketsynth/discovery.py",
+        "pocketsynth/runtime.py",
+        "pocketsynth/types.py",
+        "tests/test_discovery.py",
+        "tests/test_request_api_contract.py",
+        "tests/test_runtime_strict.py",
+        "tests/test_types.py",
+        "tests/wheel_api_smoke.py"
+      ],
+      "sha": "c7d5f897fa09ee141c79d1aa207a605496c343e9",
+      "short_sha": "c7d5f89",
+      "source_ref": "git:c7d5f897fa09ee141c79d1aa207a605496c343e9"
+    }
+  ],
+  "git_base_ref": "d55820eeedb47ae3a5837ae3fb701020f765c45e",
+  "git_base_sha": "d55820eeedb47ae3a5837ae3fb701020f765c45e",
+  "git_head_ref": "c7d5f897fa09ee141c79d1aa207a605496c343e9",
+  "git_head_sha": "c7d5f897fa09ee141c79d1aa207a605496c343e9",
+  "include_merges": "nontrivial",
+  "object_type": "git_evidence_manifest",
+  "release_version": "v0.2.4",
+  "schema_version": 1
+}

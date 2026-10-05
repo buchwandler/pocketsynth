@@ -133,9 +133,7 @@ class RequestMeasure:
             raise InvalidRequestError("amount must be a non-negative integer")
 
         if self.maximum is not None and (
-            isinstance(self.maximum, bool)
-            or not isinstance(self.maximum, int)
-            or self.maximum <= 0
+            isinstance(self.maximum, bool) or not isinstance(self.maximum, int) or self.maximum <= 0
         ):
             raise InvalidRequestError("maximum must be a positive integer or None")
 

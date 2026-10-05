@@ -431,7 +431,6 @@ class PocketRuntime:
         language = self._validate_request(request)
         return self._encode_request(request, language).measure
 
-
     def synthesize(
         self,
         request: SynthesisRequest,

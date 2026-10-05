@@ -166,7 +166,6 @@ def test_token_count_over_model_limit_fails_before_inference() -> None:
     assert caught.value.bundle_id == "english-test"
 
 
-
 def test_measure_request_encodes_once_without_inference_or_splitting() -> None:
     runtime, frontend, backend = make_runtime(max_tokens=5)
     request = SynthesisRequest(id="measured", text="hello")
@@ -251,9 +250,7 @@ def test_measure_request_rejects_empty_text_and_wrong_language() -> None:
         SynthesisRequest(
             id="override",
             text="hello",
-            pronunciation_overrides=(
-                PronunciationOverride(start=0, end=5, phonemes="həˈloʊ"),
-            ),
+            pronunciation_overrides=(PronunciationOverride(start=0, end=5, phonemes="həˈloʊ"),),
         ),
     ],
 )

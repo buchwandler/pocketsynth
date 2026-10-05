@@ -45,7 +45,6 @@ with PocketRuntime.from_pretrained("english_2026-04") as runtime:
 
 `runtime.measure_request(request)` validates and encodes the complete request without preparing a voice, fetching assets, inferring, or splitting text. It returns a public `RequestMeasure` with `amount`, `maximum`, `unit` (`"tokens"`), and `fits`; an oversized measurement reports `fits=False`, while `synthesize()` still raises `SynthesisInputTooLongError` before inference. Measurement and synthesis share their request encoding path, so callers do not need to inspect `runtime.frontend` or `runtime.metadata`.
 
-
 `request_api_contract()` returns the versioned public capability declaration (`REQUEST_API_VERSION == 1`), including caller-owned text boundaries and the features supported by this engine. Creating the descriptor does not inspect assets or open a runtime. Import `AssetError`, `AssetDownloadError`, `AssetAccessError`, `AssetCacheError`, `CatalogUnavailableError`, `OfflineAssetError`, `SessionCreationError`, and `RuntimeCapabilityError` from `pocketsynth` for typed handling of public asset/runtime failures.
 
 `PocketRuntime.load(directory)` opens a local bundle without catalog access or network activity. `PocketRuntime.from_pretrained(bundle)` resolves and opens a managed bundle through OnnxVoice.
