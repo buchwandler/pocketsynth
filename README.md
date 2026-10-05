@@ -29,19 +29,24 @@ Use `PocketRuntime` for a reusable local or managed bundle session. Prepare a vo
 from pocketsynth import PocketRuntime, SynthesisRequest
 
 with PocketRuntime.from_pretrained("english_2026-04") as runtime:
-    voice = runtime.prepare_voice("alba")
-    result = runtime.synthesize(
-        SynthesisRequest(
-            id="line-001",
-            text="Hello from Pocket.",
-            language="en",
-        ),
-        voice=voice,
+    request = SynthesisRequest(
+        id="line-001",
+        text="Hello from Pocket.",
+        language="en",
     )
+    measure = runtime.measure_request(request)
+    print(measure.amount, measure.maximum, measure.fits)
+    voice = runtime.prepare_voice("alba")
+    result = runtime.synthesize(request, voice=voice)
     result.save_wav("example-artifacts/hello.wav")
 ```
 
 `PocketRuntime.synthesize()` is strict and atomic. It encodes the complete request once, then either performs one inference or raises `SynthesisInputTooLongError`. It never splits text. `config=` accepts a validated `GenerationConfig`; `synthesize_text()` is a strict plain-text wrapper that prepares non-`PreparedVoice` inputs.
+
+`runtime.measure_request(request)` validates and encodes the complete request without preparing a voice, fetching assets, inferring, or splitting text. It returns a public `RequestMeasure` with `amount`, `maximum`, `unit` (`"tokens"`), and `fits`; an oversized measurement reports `fits=False`, while `synthesize()` still raises `SynthesisInputTooLongError` before inference. Measurement and synthesis share their request encoding path, so callers do not need to inspect `runtime.frontend` or `runtime.metadata`.
+
+
+`request_api_contract()` returns the versioned public capability declaration (`REQUEST_API_VERSION == 1`), including caller-owned text boundaries and the features supported by this engine. Creating the descriptor does not inspect assets or open a runtime. Import `AssetError`, `AssetDownloadError`, `AssetAccessError`, `AssetCacheError`, `CatalogUnavailableError`, `OfflineAssetError`, `SessionCreationError`, and `RuntimeCapabilityError` from `pocketsynth` for typed handling of public asset/runtime failures.
 
 `PocketRuntime.load(directory)` opens a local bundle without catalog access or network activity. `PocketRuntime.from_pretrained(bundle)` resolves and opens a managed bundle through OnnxVoice.
 
@@ -113,7 +118,7 @@ with PocketRuntime.from_pretrained("english_2026-04") as runtime:
     # identity['prepared_sha256'] is the normalized audio fingerprint.
 ```
 
-`list_voice_prompts()` and `inspect_voice_prompt()` return typed prompt metadata without requiring a runtime, installing a bundle, or fetching WAVs. `discover_bundles()` similarly returns PocketSynth-owned `DiscoveredBundle` and `DiscoveredVoice` records without installing or opening a bundle. `runtime_identity(bundle)` reports PocketSynth and OnnxVoice versions and the bundle revision without opening a model; OnnxVoice 0.2.2 does not expose a separate catalog revision, so `catalog_revision` is `None`. The discovery APIs accept explicit `offline` and `refresh` options; `runtime_identity()` only reads installed package metadata. The runtime list/inspect wrappers remain available, but standalone functions are the metadata-discovery entry points.
+`list_voice_prompts()` and `inspect_voice_prompt()` return typed prompt metadata without requiring a runtime, installing a bundle, or fetching WAVs. `discover_bundles()` similarly returns PocketSynth-owned `DiscoveredBundle` and `DiscoveredVoice` records without installing or opening a bundle; the DTOs validate catalog fields, and `DiscoveredBundle.metadata` is a copied read-only mapping. `runtime_identity(bundle)` reports `engine_version`, `runtime_revision`, `request_api_version`, `catalog_revision`, and `bundle_revision` without opening a model; OnnxVoice 0.2.2 does not expose a separate catalog revision, so `catalog_revision` is `None`. The discovery APIs accept explicit `offline` and `refresh` options; `runtime_identity()` only reads installed package metadata. The runtime list/inspect wrappers remain available, but standalone functions are the metadata-discovery entry points.
 
 The CLI supports metadata-only prompt listing and direct prompt inspection. Filters include `--dataset`, `--variant`, `--license`, and `--offline`:
 

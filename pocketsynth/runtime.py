@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import time
 from collections.abc import Iterator, Mapping, Sequence
-from dataclasses import asdict, replace
+from dataclasses import asdict, dataclass, replace
 from pathlib import Path
 from typing import Any
 
@@ -40,6 +40,7 @@ from .language import bundle_language as resolve_bundle_language
 from .language import normalize_language
 from .types import (
     RenderedChunk,
+    RequestMeasure,
     SynthesisRequest,
     SynthesisResult,
     SynthesisSegment,
@@ -49,6 +50,13 @@ from .voice_level import VoiceLevelConfig, apply_voice_level_calibration
 from .voice_prompts import VoicePromptInfo
 from .voice_prompts import inspect_voice_prompt as query_inspect_voice_prompt
 from .voice_prompts import list_voice_prompts as query_voice_prompts
+
+
+@dataclass(frozen=True, slots=True)
+class _EncodedRequest:
+    language: str
+    token_ids: tuple[int, ...]
+    measure: RequestMeasure
 
 
 class PocketRuntime:
@@ -396,15 +404,7 @@ class PocketRuntime:
                 sample_rate=self.sample_rate,
             )
 
-    def synthesize(
-        self,
-        request: SynthesisRequest,
-        *,
-        voice: PreparedVoice,
-        config: GenerationConfig | None = None,
-        voice_level: VoiceLevelConfig | None = None,
-    ) -> SynthesisResult:
-        """Render one complete request with one encoding and at most one inference."""
+    def _validate_request(self, request: SynthesisRequest) -> str:
         self._ensure_open()
         if not isinstance(request, SynthesisRequest):
             raise InvalidRequestError("request must be a SynthesisRequest")
@@ -414,7 +414,34 @@ class PocketRuntime:
             raise UnsupportedFeatureError(feature="linguistic_tokens")
         if request.pronunciation_overrides:
             raise UnsupportedFeatureError(feature="pronunciation_overrides")
-        language = self._validate_language(request.language)
+        return self._validate_language(request.language)
+
+    def _encode_request(self, request: SynthesisRequest, language: str) -> _EncodedRequest:
+        token_ids = tuple(self.frontend.encode(request.text))
+        if not token_ids:
+            raise EmptyTextError("request text produced no Pocket tokens")
+        measure = RequestMeasure(
+            amount=len(token_ids),
+            maximum=self.metadata.max_token_per_chunk,
+        )
+        return _EncodedRequest(language=language, token_ids=token_ids, measure=measure)
+
+    def measure_request(self, request: SynthesisRequest) -> RequestMeasure:
+        """Measure one complete request without voice preparation or inference."""
+        language = self._validate_request(request)
+        return self._encode_request(request, language).measure
+
+
+    def synthesize(
+        self,
+        request: SynthesisRequest,
+        *,
+        voice: PreparedVoice,
+        config: GenerationConfig | None = None,
+        voice_level: VoiceLevelConfig | None = None,
+    ) -> SynthesisResult:
+        """Render one complete request with one encoding and at most one inference."""
+        language = self._validate_request(request)
         generation = GenerationConfig() if config is None else config
         if not isinstance(generation, GenerationConfig):
             raise InvalidGenerationConfigError("config must be a GenerationConfig")
@@ -434,19 +461,17 @@ class PocketRuntime:
 
         started = time.perf_counter()
         frontend_started = time.perf_counter()
-        token_ids = self.frontend.encode(request.text)
+        encoded = self._encode_request(request, language)
         frontend_ms = (time.perf_counter() - frontend_started) * 1000
-        if not token_ids:
-            raise EmptyTextError("request text produced no Pocket tokens")
-        max_tokens = self.metadata.max_token_per_chunk
-        if len(token_ids) > max_tokens:
+        token_ids = encoded.token_ids
+        if encoded.measure.fits is False:
+            assert encoded.measure.maximum is not None
             raise SynthesisInputTooLongError(
                 text_length=len(request.text),
-                token_count=len(token_ids),
-                max_tokens=max_tokens,
+                token_count=encoded.measure.amount,
+                max_tokens=encoded.measure.maximum,
                 bundle_id=self.bundle_id,
             )
-
         inference_started = time.perf_counter()
         audio = self._infer_tokens_unchecked(token_ids, voice, generation)
         inference_ms = (time.perf_counter() - inference_started) * 1000

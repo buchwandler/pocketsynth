@@ -4,7 +4,9 @@ from pathlib import Path
 from types import SimpleNamespace
 from unittest.mock import MagicMock, patch
 
-from pocketsynth import __version__
+import pytest
+
+from pocketsynth import REQUEST_API_VERSION, __version__
 from pocketsynth.assets import PocketBundle
 from pocketsynth.discovery import (
     DiscoveredBundle,
@@ -42,6 +44,70 @@ def catalog_item() -> SimpleNamespace:
             ],
         },
     )
+
+
+def discovered_bundle(**changes: object) -> DiscoveredBundle:
+    values: dict[str, object] = {
+        "id": "english",
+        "ref": "pocket:english",
+        "display_name": "English",
+        "aliases": ("en",),
+        "language": "en",
+        "sample_rate": 24_000,
+        "precisions": ("int8",),
+        "predefined_voices": ("alba",),
+        "default_voice": "alba",
+        "source_revision": "revision-1",
+        "max_tokens": 512,
+    }
+    values.update(changes)
+    return DiscoveredBundle(**values)  # type: ignore[arg-type]
+
+
+@pytest.mark.parametrize(
+    "changes",
+    [
+        {"id": ""},
+        {"ref": " "},
+        {"display_name": None},
+        {"language": ""},
+        {"aliases": "en"},
+        {"aliases": ("",)},
+        {"sample_rate": 0},
+        {"sample_rate": True},
+        {"precisions": ("",)},
+        {"predefined_voices": (None,)},
+        {"default_voice": " "},
+        {"source_revision": ""},
+        {"max_tokens": 0},
+        {"max_tokens": True},
+        {"voice_details": (object(),)},
+        {"metadata": []},
+    ],
+)
+def test_discovered_bundle_rejects_invalid_fields(changes: dict[str, object]) -> None:
+    with pytest.raises(ValueError):
+        discovered_bundle(**changes)
+
+
+@pytest.mark.parametrize(
+    "field",
+    ["id", "gender", "language", "locale", "language_label"],
+)
+def test_discovered_voice_rejects_empty_fields(field: str) -> None:
+    with pytest.raises(ValueError):
+        values = {"id": "voice", field: " "}
+        DiscoveredVoice(**values)  # type: ignore[arg-type]
+
+
+def test_discovered_bundle_copies_metadata_to_a_read_only_mapping() -> None:
+    metadata = {"nested": "value"}
+    bundle = discovered_bundle(metadata=metadata)
+    metadata["later"] = "change"
+
+    assert bundle.metadata == {"nested": "value"}
+    with pytest.raises(TypeError):
+        bundle.metadata["new"] = "value"  # type: ignore[index]
 
 
 def test_discover_bundles_returns_normalized_pocketsynth_owned_metadata(tmp_path: Path) -> None:
@@ -151,13 +217,16 @@ def test_runtime_identity_uses_versions_and_separate_bundle_revision() -> None:
 
     with patch("pocketsynth.discovery.version", return_value="0.2.2"):
         identity = runtime_identity(bundle)
+        identity_again = runtime_identity(bundle)
 
     assert identity == {
         "engine_version": __version__,
         "runtime_revision": "0.2.2",
+        "request_api_version": str(REQUEST_API_VERSION),
         "catalog_revision": None,
         "bundle_revision": "bundle-revision",
     }
+    assert identity_again == identity
 
 
 def test_runtime_identity_supports_installed_bundle_and_no_bundle() -> None:

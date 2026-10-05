@@ -10,6 +10,7 @@ except ImportError:
     except Exception:
         __version__ = "0.0.0"
 
+from .api_contract import REQUEST_API_VERSION, RequestApiContract, request_api_contract
 from .asset_manager import BundleAssetManager
 from .asset_progress import AssetProgressCallback, AssetProgressEvent, ConsoleAssetProgress
 from .assets import PocketBundle
@@ -18,9 +19,14 @@ from .config import GenerationConfig
 from .diagnostics import RuntimeDiagnostics, SynthesisTiming
 from .discovery import DiscoveredBundle, DiscoveredVoice, discover_bundles, runtime_identity
 from .errors import (
+    AssetAccessError,
+    AssetCacheError,
+    AssetDownloadError,
+    AssetError,
     BundleError,
     BundleLanguageError,
     BundleNotFoundError,
+    CatalogUnavailableError,
     EmptyTextError,
     InvalidGenerationConfigError,
     InvalidLanguageError,
@@ -28,9 +34,12 @@ from .errors import (
     InvalidVoiceError,
     InvalidVoicePromptMetadataError,
     ModelInferenceError,
+    OfflineAssetError,
     OptionalDependencyError,
     PocketSynthError,
+    RuntimeCapabilityError,
     RuntimeClosedError,
+    SessionCreationError,
     SynthesisError,
     SynthesisInputTooLongError,
     UnsupportedBundleError,
@@ -44,6 +53,7 @@ from .types import (
     PronunciationOverride,
     RenderedChunk,
     RenderedSegment,
+    RequestMeasure,
     SynthesisRequest,
     SynthesisResult,
     SynthesisSegment,
@@ -59,6 +69,10 @@ from .voice_level import (
 from .voice_prompts import VoicePromptInfo, inspect_voice_prompt, list_voice_prompts
 
 __all__ = [
+    "AssetAccessError",
+    "AssetCacheError",
+    "AssetDownloadError",
+    "AssetError",
     "AssetProgressCallback",
     "AssetProgressEvent",
     "BundleAssetManager",
@@ -67,6 +81,7 @@ __all__ = [
     "BundleMetadata",
     "BundleNotFoundError",
     "BundlePaths",
+    "CatalogUnavailableError",
     "ConsoleAssetProgress",
     "DiscoveredBundle",
     "DiscoveredVoice",
@@ -79,6 +94,7 @@ __all__ = [
     "InvalidVoicePromptMetadataError",
     "LinguisticToken",
     "ModelInferenceError",
+    "OfflineAssetError",
     "OptionalDependencyError",
     "PocketBundle",
     "PocketRuntime",
@@ -87,8 +103,13 @@ __all__ = [
     "PronunciationOverride",
     "RenderedChunk",
     "RenderedSegment",
+    "REQUEST_API_VERSION",
+    "RequestApiContract",
+    "RequestMeasure",
+    "RuntimeCapabilityError",
     "RuntimeClosedError",
     "RuntimeDiagnostics",
+    "SessionCreationError",
     "SynthesisError",
     "SynthesisInputTooLongError",
     "SynthesisRequest",
@@ -108,5 +129,6 @@ __all__ = [
     "inspect_voice_prompt",
     "list_voice_prompts",
     "runtime_identity",
+    "request_api_contract",
     "WordTiming",
 ]

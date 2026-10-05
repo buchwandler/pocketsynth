@@ -15,6 +15,7 @@ from pocketsynth.types import (
     PronunciationOverride,
     RenderedChunk,
     RenderedSegment,
+    RequestMeasure,
     SynthesisRequest,
     SynthesisResult,
     SynthesisSegment,
@@ -133,6 +134,37 @@ def test_synthesis_request_validates_and_normalizes_linguistic_context() -> None
             text="hello",
             pronunciation_overrides=(PronunciationOverride(0, 6, phonemes="həˈloʊ"),),
         )
+
+
+def test_request_measure_derives_fit_and_is_immutable() -> None:
+    fits = RequestMeasure(amount=5, maximum=5)
+    too_large = RequestMeasure(amount=6, maximum=5)
+    unbounded = RequestMeasure(amount=6, maximum=None)
+
+    assert (fits.amount, fits.maximum, fits.unit, fits.fits) == (5, 5, "tokens", True)
+    assert too_large.fits is False
+    assert unbounded.fits is None
+    with pytest.raises(AttributeError):
+        fits.amount = 4  # type: ignore[misc]
+
+
+@pytest.mark.parametrize(
+    "kwargs",
+    [
+        {"amount": -1, "maximum": 5},
+        {"amount": True, "maximum": 5},
+        {"amount": 1.5, "maximum": 5},
+        {"amount": 1, "maximum": 0},
+        {"amount": 1, "maximum": -1},
+        {"amount": 1, "maximum": True},
+        {"amount": 1, "maximum": 1.5},
+        {"amount": 1, "maximum": 5, "unit": "characters"},
+        {"amount": 6, "maximum": 5, "fits": True},
+    ],
+)
+def test_request_measure_rejects_invalid_values(kwargs: dict[str, object]) -> None:
+    with pytest.raises(InvalidRequestError):
+        RequestMeasure(**kwargs)  # type: ignore[arg-type]
 
 
 def test_strict_synthesis_result_normalizes_audio_and_has_no_chunks() -> None:

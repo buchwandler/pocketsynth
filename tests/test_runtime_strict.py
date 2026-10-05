@@ -166,6 +166,107 @@ def test_token_count_over_model_limit_fails_before_inference() -> None:
     assert caught.value.bundle_id == "english-test"
 
 
+
+def test_measure_request_encodes_once_without_inference_or_splitting() -> None:
+    runtime, frontend, backend = make_runtime(max_tokens=5)
+    request = SynthesisRequest(id="measured", text="hello")
+    runtime.prepare_voice = lambda _source: pytest.fail("voice prepared during request measurement")  # type: ignore[method-assign]
+
+    with (
+        patch.object(
+            frontend,
+            "split_for_model",
+            side_effect=AssertionError("model splitting called"),
+        ),
+        patch(
+            "phrasplit.split_sentences",
+            side_effect=AssertionError("Phrasplit called"),
+        ),
+    ):
+        measure = runtime.measure_request(request)
+
+    assert (measure.amount, measure.maximum, measure.unit, measure.fits) == (
+        5,
+        5,
+        "tokens",
+        True,
+    )
+    assert frontend.encoded == [request.text]
+    assert backend.calls == []
+
+
+def test_measure_request_reports_oversized_request_without_rendering() -> None:
+    runtime, frontend, backend = make_runtime(max_tokens=5)
+    request = SynthesisRequest(id="too-long", text="hello!")
+
+    measure = runtime.measure_request(request)
+
+    assert measure.amount == 6
+    assert measure.maximum == 5
+    assert measure.fits is False
+    assert frontend.encoded == [request.text]
+    assert backend.calls == []
+
+    with pytest.raises(SynthesisInputTooLongError) as caught:
+        runtime.synthesize(request, voice=make_voice())
+    assert measure.maximum == caught.value.max_tokens
+    assert backend.calls == []
+
+
+def test_measurement_matches_synthesis_token_count() -> None:
+    runtime, frontend, backend = make_runtime(max_tokens=5)
+    request = SynthesisRequest(id="at-limit", text="hello")
+
+    measure = runtime.measure_request(request)
+    result = runtime.synthesize(request, voice=make_voice())
+
+    assert measure.fits is True
+    assert measure.amount == result.metadata["token_count"]
+    assert frontend.encoded == [request.text, request.text]
+    assert len(backend.calls) == 1
+
+
+def test_measure_request_rejects_empty_text_and_wrong_language() -> None:
+    runtime, frontend, backend = make_runtime()
+
+    with pytest.raises(EmptyTextError):
+        runtime.measure_request(SynthesisRequest(id="empty", text=" \t\n"))
+    with pytest.raises(InvalidLanguageError):
+        runtime.measure_request(
+            SynthesisRequest(id="wrong-language", text="bonjour", language="fr")
+        )
+
+    assert frontend.encoded == []
+    assert backend.calls == []
+
+
+@pytest.mark.parametrize(
+    "synthesis_request",
+    [
+        SynthesisRequest(
+            id="tokens",
+            text="hello",
+            tokens=(LinguisticToken(start=0, end=5),),
+        ),
+        SynthesisRequest(
+            id="override",
+            text="hello",
+            pronunciation_overrides=(
+                PronunciationOverride(start=0, end=5, phonemes="həˈloʊ"),
+            ),
+        ),
+    ],
+)
+def test_measure_request_rejects_unsupported_features(synthesis_request: SynthesisRequest) -> None:
+    runtime, frontend, backend = make_runtime()
+
+    with pytest.raises(UnsupportedFeatureError):
+        runtime.measure_request(synthesis_request)
+
+    assert frontend.encoded == []
+    assert backend.calls == []
+
+
 def test_empty_and_whitespace_requests_fail_before_voice_preparation_or_encoding() -> None:
     runtime, frontend, backend = make_runtime()
     runtime.prepare_voice = lambda _source: pytest.fail("voice prepared for empty text")  # type: ignore[method-assign]

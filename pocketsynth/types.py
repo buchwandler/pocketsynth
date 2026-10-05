@@ -120,6 +120,36 @@ class SynthesisRequest:
 
 
 @dataclass(frozen=True, slots=True)
+class RequestMeasure:
+    """Encoded request size relative to the active Pocket bundle capacity."""
+
+    amount: int
+    maximum: int | None
+    unit: Literal["tokens"] = "tokens"
+    fits: bool | None = None
+
+    def __post_init__(self) -> None:
+        if isinstance(self.amount, bool) or not isinstance(self.amount, int) or self.amount < 0:
+            raise InvalidRequestError("amount must be a non-negative integer")
+
+        if self.maximum is not None and (
+            isinstance(self.maximum, bool)
+            or not isinstance(self.maximum, int)
+            or self.maximum <= 0
+        ):
+            raise InvalidRequestError("maximum must be a positive integer or None")
+
+        if self.unit != "tokens":
+            raise InvalidRequestError("unit must be 'tokens'")
+
+        expected = None if self.maximum is None else self.amount <= self.maximum
+        if self.fits is not None and self.fits != expected:
+            raise InvalidRequestError("fits must match amount and maximum")
+
+        object.__setattr__(self, "fits", expected)
+
+
+@dataclass(frozen=True, slots=True)
 class WordTiming:
     """Timing span for one source-text word, when an engine provides timestamps."""
 

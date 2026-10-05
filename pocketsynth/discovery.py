@@ -4,11 +4,26 @@ from collections.abc import Mapping, Sequence
 from dataclasses import dataclass, field
 from importlib.metadata import version
 from pathlib import Path
+from types import MappingProxyType
 from typing import Any
 
 from ._onnxvoice import list_pocket_bundles
 from .asset_progress import AssetProgressCallback
 from .assets import PocketBundle
+
+
+def _require_nonempty_string(value: object, name: str) -> None:
+    if not isinstance(value, str) or not value.strip():
+        raise ValueError(f"{name} must be a non-empty string")
+
+
+def _string_tuple(value: object, name: str) -> tuple[str, ...]:
+    if not isinstance(value, Sequence) or isinstance(value, (str, bytes)):
+        raise ValueError(f"{name} must be a sequence of non-empty strings")
+    result = tuple(value)
+    if any(not isinstance(item, str) or not item.strip() for item in result):
+        raise ValueError(f"{name} must contain only non-empty strings")
+    return result
 
 
 @dataclass(frozen=True, slots=True)
@@ -20,6 +35,10 @@ class DiscoveredVoice:
     language: str = "unknown"
     locale: str = "unknown"
     language_label: str = "unknown"
+
+    def __post_init__(self) -> None:
+        for name in ("id", "gender", "language", "locale", "language_label"):
+            _require_nonempty_string(getattr(self, name), name)
 
 
 @dataclass(frozen=True, slots=True)
@@ -40,6 +59,42 @@ class DiscoveredBundle:
     voice_details: tuple[DiscoveredVoice, ...] = ()
     metadata: Mapping[str, Any] = field(default_factory=dict)
 
+    def __post_init__(self) -> None:
+        for name in ("id", "ref", "display_name", "language"):
+            _require_nonempty_string(getattr(self, name), name)
+
+        for name in ("aliases", "precisions", "predefined_voices"):
+            object.__setattr__(self, name, _string_tuple(getattr(self, name), name))
+
+        if self.sample_rate is not None and (
+            isinstance(self.sample_rate, bool)
+            or not isinstance(self.sample_rate, int)
+            or self.sample_rate <= 0
+        ):
+            raise ValueError("sample_rate must be a positive integer or None")
+        if self.default_voice is not None:
+            _require_nonempty_string(self.default_voice, "default_voice")
+        if self.source_revision is not None:
+            _require_nonempty_string(self.source_revision, "source_revision")
+        if self.max_tokens is not None and (
+            isinstance(self.max_tokens, bool)
+            or not isinstance(self.max_tokens, int)
+            or self.max_tokens <= 0
+        ):
+            raise ValueError("max_tokens must be a positive integer or None")
+
+        if not isinstance(self.voice_details, Sequence) or isinstance(
+            self.voice_details, (str, bytes)
+        ):
+            raise ValueError("voice_details must be a sequence of DiscoveredVoice values")
+        voice_details = tuple(self.voice_details)
+        if any(not isinstance(item, DiscoveredVoice) for item in voice_details):
+            raise ValueError("voice_details must contain only DiscoveredVoice values")
+        object.__setattr__(self, "voice_details", voice_details)
+
+        if not isinstance(self.metadata, Mapping):
+            raise ValueError("metadata must be a mapping")
+        object.__setattr__(self, "metadata", MappingProxyType(dict(self.metadata)))
 
 def _voice_details(metadata: Mapping[str, Any]) -> tuple[DiscoveredVoice, ...]:
     raw_details = metadata.get("voice_details", ())
@@ -132,10 +187,12 @@ def runtime_identity(
 ) -> dict[str, str | None]:
     """Return PocketSynth and OnnxVoice version identity without opening a model."""
     from . import __version__
+    from .api_contract import REQUEST_API_VERSION
 
     return {
         "engine_version": __version__,
         "runtime_revision": version("onnxvoice"),
+        "request_api_version": str(REQUEST_API_VERSION),
         "catalog_revision": None,
         "bundle_revision": bundle.source_revision if bundle is not None else None,
     }
