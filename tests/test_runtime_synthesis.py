@@ -21,30 +21,39 @@ class FakeFrontend:
     def split_for_model(self, text: str) -> tuple[str, ...]:
         return tuple(part.strip() for part in text.split("|") if part.strip())
 
-    def encode(self, text: str) -> tuple[int, ...]:
+    def prepare_and_encode(self, text: str) -> tuple[str, tuple[int, ...]]:
+        model_text = " ".join(text.strip().split())
+        return model_text, self.encode_prepared(model_text)
+
+    def encode_prepared(self, text: str) -> tuple[int, ...]:
         return tuple(ord(char) for char in text if not char.isspace())
+
+    def encode(self, text: str) -> tuple[int, ...]:
+        return self.prepare_and_encode(text)[1]
 
 
 class FakeInferenceRuntime:
     def __init__(self) -> None:
         self.calls: list[tuple[list[int], dict[str, object]]] = []
         self.closed = False
+        self.result_metadata: object = None
 
     def infer(self, token_ids: list[int], **kwargs: object) -> SimpleNamespace:
         self.calls.append((token_ids, kwargs))
         return SimpleNamespace(
             audio=np.asarray(token_ids, dtype=np.float32),
             sample_rate=24_000,
+            metadata=self.result_metadata,
         )
 
     def close(self) -> None:
         self.closed = True
 
 
-def make_runtime() -> tuple[PocketRuntime, FakeInferenceRuntime]:
+def make_runtime(*, recommendation: int | None = 9) -> tuple[PocketRuntime, FakeInferenceRuntime]:
     metadata = FakeBundleMetadata(
         language="english_2026-04",
-        model_recommended_frames_after_eos=9,
+        model_recommended_frames_after_eos=recommendation,
     )
     backend = FakeInferenceRuntime()
     with patch("pocketsynth.runtime.PocketFrontend", return_value=FakeFrontend()):
@@ -146,14 +155,100 @@ def test_inference_rejects_empty_audio() -> None:
         runtime.infer_tokens((1,), make_voice(), GenerationConfig())
 
 
-def test_frames_after_eos_uses_bundle_default_only_when_unspecified() -> None:
+@pytest.mark.parametrize(
+    ("generation", "expected_frames", "expected_source"),
+    [
+        (GenerationConfig(frames_after_eos=0), 0, "explicit"),
+        (GenerationConfig(), 9, "bundle"),
+    ],
+)
+def test_synthesis_eos_precedence_keeps_explicit_zero_and_bundle_recommendation(
+    generation: GenerationConfig,
+    expected_frames: int,
+    expected_source: str,
+) -> None:
     runtime, backend = make_runtime()
-    voice = make_voice()
-    runtime.infer_tokens((1,), voice, GenerationConfig())
-    runtime.infer_tokens((2,), voice, GenerationConfig(frames_after_eos=0))
+    result = runtime.synthesize(
+        SynthesisRequest(id="precedence", text="Hello, how are you?"),
+        voice=make_voice(),
+        config=generation,
+    )
 
-    assert backend.calls[0][1]["frames_after_eos"] == 9
-    assert backend.calls[1][1]["frames_after_eos"] == 0
+    assert backend.calls[0][1]["frames_after_eos"] == expected_frames
+    assert result.metadata["effective_generation"]["frames_after_eos"] == expected_frames
+    assert result.metadata["effective_generation"]["frames_after_eos_source"] == expected_source
+
+
+@pytest.mark.parametrize(
+    ("text", "expected_frames", "expected_source"),
+    [
+        ("Hello, how are you?", 5, "automatic_short"),
+        ("This sentence has more than four words.", 3, "automatic_default"),
+    ],
+)
+def test_synthesis_uses_text_aware_automatic_tail_and_surfaces_metadata(
+    text: str,
+    expected_frames: int,
+    expected_source: str,
+) -> None:
+    runtime, backend = make_runtime(recommendation=None)
+    backend.result_metadata = {
+        "frames_generated": 17,
+        "eos_detected": True,
+        "eos_step": 12,
+    }
+
+    result = runtime.synthesize(
+        SynthesisRequest(id="automatic", text=text),
+        voice=make_voice(),
+    )
+
+    assert backend.calls[0][1]["frames_after_eos"] == expected_frames
+    assert result.metadata["generation_config"]["frames_after_eos"] is None
+    assert result.metadata["effective_generation"] == {
+        "temperature": 0.7,
+        "lsd_steps": 1,
+        "max_frames": None,
+        "frames_after_eos": expected_frames,
+        "frames_after_eos_source": expected_source,
+    }
+    assert result.metadata["backend_inference"] == backend.result_metadata
+
+
+def test_chunked_rendering_resolves_automatic_tail_per_chunk() -> None:
+    runtime, backend = make_runtime(recommendation=None)
+    chunks = list(
+        runtime.iter_chunks(
+            SynthesisSegment(
+                id="chunked",
+                text="This first chunk contains five words|Short",
+            ),
+            voice=make_voice(),
+        )
+    )
+
+    assert [call[1]["frames_after_eos"] for call in backend.calls] == [3, 5]
+    assert [
+        chunk.metadata["effective_generation"]["frames_after_eos_source"] for chunk in chunks
+    ] == ["automatic_default", "automatic_short"]
+
+
+def test_raw_token_inference_preserves_none_without_text_or_bundle_recommendation() -> None:
+    runtime, backend = make_runtime(recommendation=None)
+    runtime.infer_tokens((1,), make_voice(), GenerationConfig())
+
+    assert backend.calls[0][1]["frames_after_eos"] is None
+
+
+def test_backend_metadata_rejects_non_scalar_values() -> None:
+    runtime, backend = make_runtime(recommendation=None)
+    backend.result_metadata = {"recurrent_state": [1, 2, 3]}
+
+    with pytest.raises(ModelInferenceError, match="JSON-safe scalar"):
+        runtime.synthesize(
+            SynthesisRequest(id="metadata", text="Hello"),
+            voice=make_voice(),
+        )
 
 
 def test_incompatible_language_fails_before_inference() -> None:

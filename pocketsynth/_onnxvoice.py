@@ -24,7 +24,7 @@ from .errors import (
     VoicePromptError,
 )
 
-_ONNXVOICE_MINIMUM_VERSION = "0.2.2"
+_ONNXVOICE_MINIMUM_VERSION = "0.2.4"
 
 
 @dataclass(frozen=True, slots=True)

@@ -1,4 +1,5 @@
 import json
+from unittest.mock import patch
 
 import pytest
 
@@ -56,6 +57,22 @@ def test_frontend_applies_only_pocket_model_normalization(tmp_path) -> None:
 
     assert frontend.prepare_text("  Pay $12.50;  then wait.  ") == " Pay $12.50, then wait. "
     assert frontend.encode("Pay $12.50") == (0, 1)
+
+
+def test_prepare_and_encode_prepares_text_once(tmp_path) -> None:
+    frontend = PocketFrontend(
+        "unused",
+        make_metadata(tmp_path, remove_semicolons=True, pad_with_spaces_for_short_inputs=True),
+        processor=FakeProcessor(),
+    )
+    raw_text = "  Pay $12.50;  then wait.  "
+
+    with patch.object(frontend, "prepare_text", wraps=frontend.prepare_text) as prepare_text:
+        model_text, token_ids = frontend.prepare_and_encode(raw_text)
+
+    assert model_text == " Pay $12.50, then wait. "
+    assert token_ids == (0, 1, 2, 3)
+    prepare_text.assert_called_once_with(raw_text)
 
 
 def test_frontend_rejects_single_oversized_token_unit(tmp_path) -> None:

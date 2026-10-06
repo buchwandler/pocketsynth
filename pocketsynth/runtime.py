@@ -3,6 +3,7 @@ from __future__ import annotations
 import time
 from collections.abc import Iterator, Mapping, Sequence
 from dataclasses import asdict, dataclass, replace
+from math import isfinite
 from pathlib import Path
 from typing import Any
 
@@ -55,8 +56,17 @@ from .voice_prompts import list_voice_prompts as query_voice_prompts
 @dataclass(frozen=True, slots=True)
 class _EncodedRequest:
     language: str
+    model_text: str
     token_ids: tuple[int, ...]
     measure: RequestMeasure
+
+
+@dataclass(frozen=True, slots=True)
+class _InferenceOutput:
+    audio: np.ndarray
+    metadata: Mapping[str, object]
+    frames_after_eos: int | None
+    frames_after_eos_source: str
 
 
 class PocketRuntime:
@@ -329,10 +339,73 @@ class PocketRuntime:
             )
         return self._infer_tokens_unchecked(token_ids, voice, generation)
 
-    def _infer_tokens_unchecked(
-        self, token_ids: Sequence[int], voice: PreparedVoice, generation: GenerationConfig
-    ) -> np.ndarray:
+    def _resolve_frames_after_eos(
+        self,
+        generation: GenerationConfig,
+        *,
+        model_text: str | None,
+    ) -> tuple[int | None, str]:
+        if generation.frames_after_eos is not None:
+            return generation.frames_after_eos, "explicit"
+
+        recommended = self.metadata.model_recommended_frames_after_eos
+        if recommended is not None:
+            return recommended, "bundle"
+
+        if model_text is None:
+            return None, "backend"
+
+        if len(model_text.split()) <= 4:
+            return 5, "automatic_short"
+        return 3, "automatic_default"
+
+    @staticmethod
+    def _effective_generation_metadata(
+        generation: GenerationConfig,
+        inference: _InferenceOutput,
+    ) -> dict[str, object]:
+        return {
+            "temperature": generation.temperature,
+            "lsd_steps": generation.lsd_steps,
+            "max_frames": generation.max_frames,
+            "frames_after_eos": inference.frames_after_eos,
+            "frames_after_eos_source": inference.frames_after_eos_source,
+        }
+
+    def _validated_backend_metadata(self, result: Any) -> dict[str, object]:
+        raw_metadata = getattr(result, "metadata", None)
+        if raw_metadata is None:
+            return {}
+        if not isinstance(raw_metadata, Mapping):
+            raise ModelInferenceError("backend inference metadata must be a mapping")
+
+        metadata: dict[str, object] = {}
+        for key, raw_value in raw_metadata.items():
+            value = raw_value.item() if isinstance(raw_value, np.generic) else raw_value
+            if not isinstance(key, str) or not (
+                value is None
+                or isinstance(value, (str, bool, int))
+                or (isinstance(value, float) and isfinite(value))
+            ):
+                raise ModelInferenceError(
+                    "backend inference metadata must contain JSON-safe scalar values"
+                )
+            metadata[key] = value
+        return metadata
+
+    def _infer_tokens_detailed(
+        self,
+        token_ids: Sequence[int],
+        voice: PreparedVoice,
+        generation: GenerationConfig,
+        *,
+        model_text: str | None = None,
+    ) -> _InferenceOutput:
         self._ensure_open()
+        frames_after_eos, frames_source = self._resolve_frames_after_eos(
+            generation,
+            model_text=model_text,
+        )
         try:
             result = self.runtime.infer(
                 token_ids,
@@ -340,11 +413,7 @@ class PocketRuntime:
                 temperature=generation.temperature,
                 lsd_steps=generation.lsd_steps,
                 max_frames=generation.max_frames,
-                frames_after_eos=(
-                    generation.frames_after_eos
-                    if generation.frames_after_eos is not None
-                    else self.metadata.model_recommended_frames_after_eos
-                ),
+                frames_after_eos=frames_after_eos,
             )
         except Exception as exc:
             if isinstance(exc, (ValueError, ModelInferenceError)):
@@ -360,7 +429,17 @@ class PocketRuntime:
             raise ModelInferenceError("inference audio must be one-dimensional and finite")
         if audio.size == 0:
             raise ModelInferenceError("inference audio must not be empty")
-        return audio
+        return _InferenceOutput(
+            audio=audio,
+            metadata=self._validated_backend_metadata(result),
+            frames_after_eos=frames_after_eos,
+            frames_after_eos_source=frames_source,
+        )
+
+    def _infer_tokens_unchecked(
+        self, token_ids: Sequence[int], voice: PreparedVoice, generation: GenerationConfig
+    ) -> np.ndarray:
+        return self._infer_tokens_detailed(token_ids, voice, generation).audio
 
     def iter_chunks(
         self,
@@ -393,15 +472,24 @@ class PocketRuntime:
         if not model_texts:
             raise EmptyTextError("segment text produced no Pocket model chunks")
         for index, model_text in enumerate(model_texts):
-            token_ids = self.frontend.encode(model_text)
-            audio = self.infer_tokens(token_ids, voice, config, text_length=len(segment.text))
+            token_ids = self.frontend.encode_prepared(model_text)
+            inference = self._infer_tokens_detailed(
+                token_ids,
+                voice,
+                config,
+                model_text=model_text,
+            )
             yield RenderedChunk(
                 index=index,
                 text=model_text,
                 model_text=model_text,
                 token_ids=token_ids,
-                audio=audio,
+                audio=inference.audio,
                 sample_rate=self.sample_rate,
+                metadata={
+                    "effective_generation": self._effective_generation_metadata(config, inference),
+                    "backend_inference": dict(inference.metadata),
+                },
             )
 
     def _validate_request(self, request: SynthesisRequest) -> str:
@@ -417,14 +505,19 @@ class PocketRuntime:
         return self._validate_language(request.language)
 
     def _encode_request(self, request: SynthesisRequest, language: str) -> _EncodedRequest:
-        token_ids = tuple(self.frontend.encode(request.text))
+        model_text, token_ids = self.frontend.prepare_and_encode(request.text)
         if not token_ids:
             raise EmptyTextError("request text produced no Pocket tokens")
         measure = RequestMeasure(
             amount=len(token_ids),
             maximum=self.metadata.max_token_per_chunk,
         )
-        return _EncodedRequest(language=language, token_ids=token_ids, measure=measure)
+        return _EncodedRequest(
+            language=language,
+            model_text=model_text,
+            token_ids=token_ids,
+            measure=measure,
+        )
 
     def measure_request(self, request: SynthesisRequest) -> RequestMeasure:
         """Measure one complete request without voice preparation or inference."""
@@ -472,7 +565,13 @@ class PocketRuntime:
                 bundle_id=self.bundle_id,
             )
         inference_started = time.perf_counter()
-        audio = self._infer_tokens_unchecked(token_ids, voice, generation)
+        inference = self._infer_tokens_detailed(
+            token_ids,
+            voice,
+            generation,
+            model_text=encoded.model_text,
+        )
+        audio = inference.audio
         inference_ms = (time.perf_counter() - inference_started) * 1000
         voice_identity = voice.identity
         calibration_catalog: Mapping[str, object] = {}
@@ -502,6 +601,8 @@ class PocketRuntime:
                 "voice_identity": voice_identity,
                 "token_count": len(token_ids),
                 "generation_config": asdict(generation),
+                "effective_generation": self._effective_generation_metadata(generation, inference),
+                "backend_inference": dict(inference.metadata),
                 "voice_level_config": asdict(voice_level_config),
                 "voice_level_application": asdict(voice_level_application),
                 "runtime_diagnostics": asdict(diagnostics),

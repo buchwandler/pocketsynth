@@ -28,10 +28,19 @@ from tests.fakes import FakeBundleMetadata
 class RecordingFrontend:
     def __init__(self) -> None:
         self.encoded: list[str] = []
+        self.prepared: list[str] = []
 
-    def encode(self, text: str) -> tuple[int, ...]:
+    def prepare_and_encode(self, text: str) -> tuple[str, tuple[int, ...]]:
+        self.prepared.append(text)
+        model_text = " ".join(text.strip().split())
+        return model_text, self.encode_prepared(model_text)
+
+    def encode_prepared(self, text: str) -> tuple[int, ...]:
         self.encoded.append(text)
         return tuple(range(len(text)))
+
+    def encode(self, text: str) -> tuple[int, ...]:
+        return self.prepare_and_encode(text)[1]
 
     def split_for_model(self, text: str) -> tuple[str, ...]:
         raise AssertionError("strict synthesis must not split for the model")
@@ -41,6 +50,7 @@ class RecordingInferenceRuntime:
     def __init__(self) -> None:
         self.calls: list[tuple[tuple[int, ...], dict[str, object]]] = []
         self.failure: Exception | None = None
+        self.result_metadata: object = None
 
     def infer(self, token_ids: Sequence[int], **kwargs: object) -> SimpleNamespace:
         self.calls.append((tuple(token_ids), kwargs))
@@ -49,18 +59,20 @@ class RecordingInferenceRuntime:
         return SimpleNamespace(
             audio=np.asarray(token_ids, dtype=np.float32),
             sample_rate=24_000,
+            metadata=self.result_metadata,
         )
 
 
 def make_runtime(
     *,
     max_tokens: int = 50,
+    recommendation: int | None = 9,
     raw_metadata: dict[str, object] | None = None,
 ) -> tuple[PocketRuntime, RecordingFrontend, RecordingInferenceRuntime]:
     metadata = FakeBundleMetadata(
         language="en",
         max_token_per_chunk=max_tokens,
-        model_recommended_frames_after_eos=9,
+        model_recommended_frames_after_eos=recommendation,
         raw=raw_metadata,
     )
     frontend = RecordingFrontend()
@@ -127,6 +139,9 @@ def test_strict_synthesis_encodes_full_text_once_and_infers_once() -> None:
     assert result.metadata["bundle_id"] == "english-test"
     assert result.metadata["bundle_revision"] == "revision-1"
     assert result.metadata["generation_config"]["temperature"] == 1.2
+    assert result.metadata["effective_generation"]["frames_after_eos"] == 4
+    assert result.metadata["effective_generation"]["frames_after_eos_source"] == "explicit"
+    assert result.metadata["backend_inference"] == {}
     assert backend.calls[0][1] == {
         "voice_state": voice.state,
         "temperature": 1.2,
@@ -134,6 +149,24 @@ def test_strict_synthesis_encodes_full_text_once_and_infers_once() -> None:
         "max_frames": 100,
         "frames_after_eos": 4,
     }
+
+
+def test_strict_synthesis_uses_prepared_text_for_automatic_policy_and_metadata() -> None:
+    runtime, frontend, backend = make_runtime(recommendation=None)
+    backend.result_metadata = {
+        "frames_generated": 17,
+        "eos_detected": True,
+        "eos_step": 12,
+    }
+    request = SynthesisRequest(id="short", text="  Hello,   how are you? ")
+
+    result = runtime.synthesize(request, voice=make_voice())
+
+    assert frontend.prepared == [request.text]
+    assert frontend.encoded == ["Hello, how are you?"]
+    assert backend.calls[0][1]["frames_after_eos"] == 5
+    assert result.metadata["effective_generation"]["frames_after_eos_source"] == "automatic_short"
+    assert result.metadata["backend_inference"] == backend.result_metadata
 
 
 def test_token_count_at_model_limit_succeeds() -> None:

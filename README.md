@@ -19,7 +19,7 @@ python -m pip install 'pocketsynth[cpu]'
 
 The `gpu` extra selects OnnxVoice's GPU runtime. `playback` adds `sounddevice` for `RenderedSegment.play()`.
 
-Managed Kyutai prompt support uses the OnnxVoice prompt catalog and cache API. The supported dependency range remains `onnxvoice>=0.2.2,<0.3`; installation extras select the desired runtime backend.
+Managed Kyutai prompt support uses the OnnxVoice prompt catalog and cache API. The supported dependency range remains `onnxvoice>=0.2.4,<0.3`; installation extras select the desired runtime backend.
 
 ## Direct engine use
 
@@ -82,13 +82,19 @@ with PocketRuntime.from_pretrained("english_2026-04") as runtime:
 
 An explicit request language is a compatibility assertion against the active bundle. `None` uses the bundle language. PocketSynth does not switch bundles or route languages automatically.
 
+## EOS tail policy and result metadata
+
+Text-aware synthesis resolves `frames_after_eos` in this order: an explicit `GenerationConfig` value (including `0`), the bundle's fixed recommendation, then an automatic fallback. The fallback is 5 frames for prepared text with at most four words and 3 frames for longer text. `synthesize()`, `synthesize_text()`, and `iter_chunks()` apply this policy; chunked rendering resolves it independently for each model-text chunk.
+
+Raw `infer_tokens()` receives token IDs without their original text, so it does not guess word boundaries: it uses an explicit value or bundle recommendation and otherwise passes `None` to OnnxVoice. `SynthesisResult.metadata["generation_config"]` records the requested configuration; `effective_generation` records the actual settings and `frames_after_eos_source` (`explicit`, `bundle`, `automatic_short`, `automatic_default`, or `backend`); `backend_inference` preserves validated scalar backend metadata when available. Recurrent model state is not exposed.
+
 ## Voices
 
 Pocket bundles and voice conditioning are separate. `prepare_voice()` accepts bundle-declared predefined names, local PCM WAV paths, `Path` objects, in-memory `(audio, sample_rate)` tuples, existing `PreparedVoice` objects, and managed `kyutai-tts-voices:<id>` references. Reference WAVs support uncompressed PCM 8-, 16-, 24-, and 32-bit mono or multichannel audio; multichannel input is downmixed and audio is resampled to the bundle rate before OnnxVoice encodes it.
 
 `PreparedVoice` can be reused for many requests on a compatible runtime. For a local reference, `fingerprint` identifies normalized audio and sample rate. For a managed prompt, `voice_prompt` carries typed catalog provenance, while `bundle_revision` identifies the model bundle. A managed identity keeps the catalog asset SHA-256 (`source_sha256`) separate from the normalized prepared-audio fingerprint (`prepared_sha256`).
 
-OnnxVoice 0.2.2 owns prompt catalogs, prompt WAV fetching, cache integrity, and offline behavior. PocketSynth delegates managed audio fetching to OnnxVoice during `prepare_voice()`; metadata discovery does not fetch audio or open a model. Predefined voice states are separate assets and may require accepting upstream access terms and authenticating with Hugging Face.
+OnnxVoice owns prompt catalogs, prompt WAV fetching, cache integrity, and offline behavior. PocketSynth delegates managed audio fetching to OnnxVoice during `prepare_voice()`; metadata discovery does not fetch audio or open a model. Predefined voice states are separate assets and may require accepting upstream access terms and authenticating with Hugging Face.
 
 The simple managed workflow uses the current catalog identity for a reference:
 
@@ -117,7 +123,7 @@ with PocketRuntime.from_pretrained("english_2026-04") as runtime:
     # identity['prepared_sha256'] is the normalized audio fingerprint.
 ```
 
-`list_voice_prompts()` and `inspect_voice_prompt()` return typed prompt metadata without requiring a runtime, installing a bundle, or fetching WAVs. `discover_bundles()` similarly returns PocketSynth-owned `DiscoveredBundle` and `DiscoveredVoice` records without installing or opening a bundle; the DTOs validate catalog fields, and `DiscoveredBundle.metadata` is a copied read-only mapping. `runtime_identity(bundle)` reports `engine_version`, `runtime_revision`, `request_api_version`, `catalog_revision`, and `bundle_revision` without opening a model; OnnxVoice 0.2.2 does not expose a separate catalog revision, so `catalog_revision` is `None`. The discovery APIs accept explicit `offline` and `refresh` options; `runtime_identity()` only reads installed package metadata. The runtime list/inspect wrappers remain available, but standalone functions are the metadata-discovery entry points.
+`list_voice_prompts()` and `inspect_voice_prompt()` return typed prompt metadata without requiring a runtime, installing a bundle, or fetching WAVs. `discover_bundles()` similarly returns PocketSynth-owned `DiscoveredBundle` and `DiscoveredVoice` records without installing or opening a bundle; the DTOs validate catalog fields, and `DiscoveredBundle.metadata` is a copied read-only mapping. `runtime_identity(bundle)` reports `engine_version`, `runtime_revision`, `request_api_version`, `catalog_revision`, and `bundle_revision` without opening a model; OnnxVoice does not expose a separate catalog revision, so `catalog_revision` is `None`. The discovery APIs accept explicit `offline` and `refresh` options; `runtime_identity()` only reads installed package metadata. The runtime list/inspect wrappers remain available, but standalone functions are the metadata-discovery entry points.
 
 The CLI supports metadata-only prompt listing and direct prompt inspection. Filters include `--dataset`, `--variant`, `--license`, and `--offline`:
 

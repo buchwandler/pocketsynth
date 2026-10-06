@@ -46,12 +46,20 @@ class PocketFrontend:
             value = f" {value} "
         return value
 
-    def encode(self, text: str) -> tuple[int, ...]:
+    def prepare_and_encode(self, text: str) -> tuple[str, tuple[int, ...]]:
         prepared = self.prepare_text(text)
+        return prepared, self.encode_prepared(prepared)
+
+    def encode_prepared(self, prepared: str) -> tuple[int, ...]:
+        """Encode text that has already passed through :meth:`prepare_text`."""
         if not prepared:
             return ()
         values = self.processor.EncodeAsIds(prepared)
         return tuple(int(value) for value in values)
+
+    def encode(self, text: str) -> tuple[int, ...]:
+        _, token_ids = self.prepare_and_encode(text)
+        return token_ids
 
     def split_for_model(self, text: str) -> tuple[str, ...]:
         prepared = self.prepare_text(text)
