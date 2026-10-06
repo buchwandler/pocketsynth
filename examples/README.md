@@ -84,6 +84,25 @@ python examples/long_text.py
 
 Managed assets are fetched by default. Set `POCKETSYNTH_EXAMPLE_OFFLINE=1` to use cached assets only.
 
+## Token length and semantic-shape matrix
+
+`token_shape_matrix.py` creates a controlled set of Pocket renders that varies semantic shape (one sentence vs multiple sentences) and real model-token count. It measures each candidate with the active Pocket tokenizer rather than estimating from characters or words.
+
+Default token targets are 10, 20, 30, 40, 45, 50, and the active bundle maximum plus 5. For the current English bundle, the final `>50` target resolves to 55 tokens; other bundles resolve it dynamically.
+
+For each text, the diagnostic renders:
+
+- `sentence_split="none"`
+- `sentence_split="phrasplit"`
+
+The output directory contains paired WAVs, `manifest.csv`, `manifest.json`, `texts.json`, and `summary.md`. This model-backed diagnostic is intentionally not part of the lightweight default example runner.
+
+```bash
+python examples/token_shape_matrix.py
+```
+
+Use `--measure-only` to generate measured text and manifests without rendering, `--require-exact-targets` to fail when a requested bucket cannot be matched, or `--output-dir PATH` to choose an output location. Managed assets are fetched by default; set `POCKETSYNTH_EXAMPLE_OFFLINE=1` to use cached assets only.
+
 ## Reference-WAV synthesis
 
 The managed CLI-style example uses a reference WAV:

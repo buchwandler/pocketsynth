@@ -131,7 +131,7 @@ def test_managed_bundle_catalog_voice_names_reach_runtime(tmp_path: Path) -> Non
         metadata_path=metadata_path,
         precision="int8",
         source_revision="catalog-revision",
-        metadata={"predefined_voice_names": ["alba"]},
+        metadata={"predefined_voice_names": ["alba"], "default_temperature": 0.4},
     )
 
     cache_dir = tmp_path / "onnxvoice-cache"
@@ -182,6 +182,7 @@ def test_managed_bundle_catalog_voice_names_reach_runtime(tmp_path: Path) -> Non
             refresh=True,
         )
     assert runtime.predefined_voices == ("alba",)
+    assert runtime.metadata.default_temperature == 0.4
     open_runtime.assert_called_once_with(
         resolved,
         providers=None,

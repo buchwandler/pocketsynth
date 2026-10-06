@@ -84,6 +84,7 @@ def test_generation_config_contains_only_pocket_inference_controls() -> None:
     )
     assert not hasattr(config, "normalize_audio")
     assert not hasattr(config, "volume")
+    assert GenerationConfig().temperature is None
     with pytest.raises(ValueError, match="temperature"):
         GenerationConfig(temperature=2.1)
     with pytest.raises(ValueError, match="lsd_steps"):

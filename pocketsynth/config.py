@@ -6,22 +6,26 @@ from numbers import Real
 
 from .errors import InvalidGenerationConfigError
 
+DEFAULT_TEMPERATURE = 0.3
+
 
 @dataclass(frozen=True, slots=True)
 class GenerationConfig:
-    temperature: float = 0.7
+    temperature: float | None = None
     lsd_steps: int = 1
     max_frames: int | None = None
     frames_after_eos: int | None = None
 
     def __post_init__(self) -> None:
-        if (
+        if self.temperature is not None and (
             isinstance(self.temperature, bool)
             or not isinstance(self.temperature, Real)
             or not math.isfinite(float(self.temperature))
             or not 0.0 <= self.temperature <= 2.0
         ):
-            raise InvalidGenerationConfigError("temperature must be finite and between 0 and 2")
+            raise InvalidGenerationConfigError(
+                "temperature must be None or finite and between 0 and 2"
+            )
         if (
             isinstance(self.lsd_steps, bool)
             or not isinstance(self.lsd_steps, int)

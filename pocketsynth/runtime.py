@@ -20,8 +20,13 @@ from ._onnxvoice import (
     runtime_diagnostics,
 )
 from .asset_progress import AssetProgressCallback
-from .bundle import BundleMetadata, BundlePaths, Precision
-from .config import GenerationConfig
+from .bundle import (
+    BundleMetadata,
+    BundlePaths,
+    Precision,
+    _validated_default_temperature,
+)
+from .config import DEFAULT_TEMPERATURE, GenerationConfig
 from .diagnostics import RuntimeDiagnostics, SynthesisTiming
 from .errors import (
     EmptyTextError,
@@ -192,6 +197,19 @@ class PocketRuntime:
                 )
             if not metadata.predefined_voices:
                 metadata = replace(metadata, predefined_voices=catalog_voice_names)
+        catalog_temperature = _validated_default_temperature(
+            resolved.metadata.get("default_temperature"), source="Pocket catalog"
+        )
+        if catalog_temperature is not None:
+            if (
+                metadata.default_temperature is not None
+                and metadata.default_temperature != catalog_temperature
+            ):
+                raise UnsupportedBundleError(
+                    "Pocket bundle and catalog disagree about default_temperature"
+                )
+            if metadata.default_temperature is None:
+                metadata = replace(metadata, default_temperature=catalog_temperature)
         runtime = open_installed_bundle(
             resolved,
             providers=providers,
@@ -359,13 +377,22 @@ class PocketRuntime:
             return 5, "automatic_short"
         return 3, "automatic_default"
 
-    @staticmethod
+    def _resolve_temperature(self, generation: GenerationConfig) -> tuple[float, str]:
+        if generation.temperature is not None:
+            return generation.temperature, "explicit"
+        if self.metadata.default_temperature is not None:
+            return self.metadata.default_temperature, "bundle"
+        return DEFAULT_TEMPERATURE, "pocketsynth_default"
+
     def _effective_generation_metadata(
+        self,
         generation: GenerationConfig,
         inference: _InferenceOutput,
     ) -> dict[str, object]:
+        temperature, temperature_source = self._resolve_temperature(generation)
         return {
-            "temperature": generation.temperature,
+            "temperature": temperature,
+            "temperature_source": temperature_source,
             "lsd_steps": generation.lsd_steps,
             "max_frames": generation.max_frames,
             "frames_after_eos": inference.frames_after_eos,
@@ -410,7 +437,7 @@ class PocketRuntime:
             result = self.runtime.infer(
                 token_ids,
                 voice_state=voice.state,
-                temperature=generation.temperature,
+                temperature=self._resolve_temperature(generation)[0],
                 lsd_steps=generation.lsd_steps,
                 max_frames=generation.max_frames,
                 frames_after_eos=frames_after_eos,

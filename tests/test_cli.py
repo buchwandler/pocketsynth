@@ -115,6 +115,36 @@ def test_synthesize_cli_wires_generation_and_cache_options(
     result.save_wav.assert_called_once_with(output)
 
 
+def test_synthesize_cli_leaves_temperature_to_runtime_by_default(tmp_path) -> None:
+    runtime = MagicMock()
+    context = MagicMock()
+    context.__enter__.return_value = runtime
+    context.__exit__.return_value = False
+    result = MagicMock(sample_rate=24_000, duration_seconds=1.0)
+
+    with (
+        patch("pocketsynth.__main__.PocketRuntime.from_pretrained", return_value=context),
+        patch("pocketsynth.__main__.synthesize_with_runtime", return_value=result) as render,
+    ):
+        assert (
+            main(
+                [
+                    "synthesize",
+                    "--bundle",
+                    "english_2026-04",
+                    "--voice",
+                    "alba",
+                    "--output",
+                    str(tmp_path / "out.wav"),
+                    "Hello",
+                ]
+            )
+            == 0
+        )
+
+    assert render.call_args.kwargs["generation"].temperature is None
+
+
 def test_check_reports_available_provider(capsys) -> None:
     assert main(["check", "--provider", "CPUExecutionProvider"]) == 0
     output = capsys.readouterr().out

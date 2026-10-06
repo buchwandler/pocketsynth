@@ -239,7 +239,7 @@ def test_synthesize_to_wav_delegates_to_synthesize_and_writes_atomically(
         precision="int8",
         language="en",
         sentence_split=sentence_split,
-        temperature=0.7,
+        temperature=None,
         lsd_steps=1,
         max_frames=None,
         frames_after_eos=None,

@@ -50,10 +50,13 @@ class FakeInferenceRuntime:
         self.closed = True
 
 
-def make_runtime(*, recommendation: int | None = 9) -> tuple[PocketRuntime, FakeInferenceRuntime]:
+def make_runtime(
+    *, recommendation: int | None = 9, default_temperature: float | None = None
+) -> tuple[PocketRuntime, FakeInferenceRuntime]:
     metadata = FakeBundleMetadata(
         language="english_2026-04",
         model_recommended_frames_after_eos=recommendation,
+        default_temperature=default_temperature,
     )
     backend = FakeInferenceRuntime()
     with patch("pocketsynth.runtime.PocketFrontend", return_value=FakeFrontend()):
@@ -206,13 +209,34 @@ def test_synthesis_uses_text_aware_automatic_tail_and_surfaces_metadata(
     assert backend.calls[0][1]["frames_after_eos"] == expected_frames
     assert result.metadata["generation_config"]["frames_after_eos"] is None
     assert result.metadata["effective_generation"] == {
-        "temperature": 0.7,
+        "temperature": 0.3,
+        "temperature_source": "pocketsynth_default",
         "lsd_steps": 1,
         "max_frames": None,
         "frames_after_eos": expected_frames,
         "frames_after_eos_source": expected_source,
     }
     assert result.metadata["backend_inference"] == backend.result_metadata
+
+
+def test_generation_temperature_prefers_bundle_then_explicit_override() -> None:
+    runtime, backend = make_runtime(default_temperature=0.45)
+    request = SynthesisRequest(id="recommended", text="Hello")
+
+    recommended = runtime.synthesize(request, voice=make_voice())
+
+    assert backend.calls[0][1]["temperature"] == 0.45
+    assert recommended.metadata["effective_generation"]["temperature"] == 0.45
+    assert recommended.metadata["effective_generation"]["temperature_source"] == "bundle"
+
+    runtime, backend = make_runtime(default_temperature=0.45)
+    explicit = runtime.synthesize(
+        request, voice=make_voice(), config=GenerationConfig(temperature=0.8)
+    )
+
+    assert backend.calls[0][1]["temperature"] == 0.8
+    assert explicit.metadata["effective_generation"]["temperature"] == 0.8
+    assert explicit.metadata["effective_generation"]["temperature_source"] == "explicit"
 
 
 def test_chunked_rendering_resolves_automatic_tail_per_chunk() -> None:

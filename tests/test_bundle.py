@@ -1,7 +1,10 @@
 import json
 from pathlib import Path
 
+import pytest
+
 from pocketsynth.bundle import BundleMetadata, BundlePaths
+from pocketsynth.errors import UnsupportedBundleError
 
 
 def _bundle(tmp_path: Path) -> Path:
@@ -37,7 +40,31 @@ def test_metadata_and_int8_profile(tmp_path):
     root = _bundle(tmp_path)
     metadata = BundleMetadata.load(root / "bundle.json")
     assert metadata.max_token_per_chunk == 50
+    assert metadata.default_temperature is None
     paths = BundlePaths.from_directory(root, precision="int8")
     assert paths.flow_lm_main.name.endswith("_int8.onnx")
     assert paths.mimi_encoder.name == "mimi_encoder.onnx"
     assert paths.text_conditioner.name == "text_conditioner.onnx"
+
+
+def test_metadata_parses_default_temperature(tmp_path: Path) -> None:
+    root = _bundle(tmp_path)
+    metadata_path = root / "bundle.json"
+    data = json.loads(metadata_path.read_text())
+    data["default_temperature"] = 0.3
+    metadata_path.write_text(json.dumps(data))
+
+    metadata = BundleMetadata.load(metadata_path)
+
+    assert metadata.default_temperature == 0.3
+
+
+def test_metadata_rejects_invalid_default_temperature(tmp_path: Path) -> None:
+    root = _bundle(tmp_path)
+    metadata_path = root / "bundle.json"
+    data = json.loads(metadata_path.read_text())
+    data["default_temperature"] = True
+    metadata_path.write_text(json.dumps(data))
+
+    with pytest.raises(UnsupportedBundleError, match="default_temperature"):
+        BundleMetadata.load(metadata_path)

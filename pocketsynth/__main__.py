@@ -28,7 +28,7 @@ def _providers(values: list[str] | None) -> str | list[str] | None:
 
 def _add_runtime_options(parser: argparse.ArgumentParser) -> None:
     parser.add_argument("--precision", choices=("int8", "fp32"), default="int8")
-    parser.add_argument("--temperature", type=float, default=0.7)
+    parser.add_argument("--temperature", type=float, default=None)
     parser.add_argument("--lsd-steps", type=int, default=1)
     parser.add_argument("--max-frames", type=int)
     parser.add_argument("--frames-after-eos", type=int)

@@ -54,7 +54,7 @@ class FakePocketRuntime:
         self,
         token_ids: list[int],
         voice_state: Any,
-        temperature: float = 0.7,
+        temperature: float = 0.3,
         lsd_steps: int = 1,
         max_frames: int | None = None,
         frames_after_eos: int | None = None,
@@ -104,6 +104,7 @@ class FakeBundleMetadata:
     remove_semicolons: bool = False
     pad_with_spaces_for_short_inputs: bool = False
     model_recommended_frames_after_eos: int | None = None
+    default_temperature: float | None = None
     predefined_voices: tuple[str, ...] = ()
     raw: dict[str, Any] | None = None
 

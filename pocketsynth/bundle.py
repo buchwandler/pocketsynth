@@ -1,13 +1,30 @@
 from __future__ import annotations
 
 import json
+import math
 from dataclasses import dataclass
+from numbers import Real
 from pathlib import Path
 from typing import Any, Literal
 
 from .errors import BundleNotFoundError, UnsupportedBundleError
 
 Precision = Literal["int8", "fp32"]
+
+
+def _validated_default_temperature(value: object, *, source: str) -> float | None:
+    if value is None:
+        return None
+    if (
+        isinstance(value, bool)
+        or not isinstance(value, Real)
+        or not math.isfinite(float(value))
+        or not 0.0 <= float(value) <= 2.0
+    ):
+        raise UnsupportedBundleError(
+            f"{source} default_temperature must be finite and between 0 and 2"
+        )
+    return float(value)
 
 
 @dataclass(frozen=True, slots=True)
@@ -26,6 +43,7 @@ class BundleMetadata:
     model_recommended_frames_after_eos: int | None = None
     predefined_voices: tuple[str, ...] = ()
     raw: dict[str, Any] | None = None
+    default_temperature: float | None = None
 
     @classmethod
     def load(cls, path: str | Path) -> BundleMetadata:
@@ -69,6 +87,9 @@ class BundleMetadata:
                 else None
             ),
             predefined_voices=tuple(str(v) for v in raw.get("predefined_voices", ())),
+            default_temperature=_validated_default_temperature(
+                raw.get("default_temperature"), source=str(source)
+            ),
             raw=dict(raw),
         )
 
