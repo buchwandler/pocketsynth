@@ -1,0 +1,23 @@
+rows:
+  - sha: 41cfd3cb4586cf738820fac082efbe89312e8345
+    inspected: true
+    inspected_paths:
+      - .github/workflows/python-publish.yml
+      - .github/workflows/tests.yml
+      - README.md
+      - docs/architecture.md
+      - pocketsynth/_onnxvoice.py
+      - pocketsynth/frontend.py
+      - pocketsynth/runtime.py
+      - pyproject.toml
+      - tests/test_frontend.py
+      - tests/test_package_boundary.py
+      - tests/test_runtime_strict.py
+      - tests/test_runtime_synthesis.py
+    observed_behavior: "Text-aware synthesis now resolves frames_after_eos from explicit configuration (including zero), bundle recommendation, or a word-count fallback; strict and chunked synthesis preserve prepared text and expose effective generation plus validated scalar backend metadata. The supported OnnxVoice floor is raised to 0.2.4, with focused regression coverage and updated documentation."
+    public_impact: public
+    decision: accepted
+    target_entry_key: entry-0001
+    target_entry_id: null
+    notes: "Reviewed implementation, documentation, dependency metadata, and regression tests."
+    stale: false

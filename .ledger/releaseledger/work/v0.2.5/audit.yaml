@@ -1,0 +1,40 @@
+schema_version: 1
+object_type: commit_audit_sheet
+versioning:
+  schema_version: 1
+  revision: 1
+release_version: v0.2.5
+git_base_ref: v0.2.4
+git_base_sha: d97537260a81771415c0795b8c535f8f804279b5
+git_head_ref: HEAD
+git_head_sha: 41cfd3cb4586cf738820fac082efbe89312e8345
+git_range: d97537260a81771415c0795b8c535f8f804279b5..41cfd3cb4586cf738820fac082efbe89312e8345
+commit_count: 1
+rows:
+  - sha: 41cfd3cb4586cf738820fac082efbe89312e8345
+    source_ref: git:41cfd3cb4586cf738820fac082efbe89312e8345
+    short_sha: 41cfd3c
+    changed_paths:
+      - .github/workflows/python-publish.yml
+      - .github/workflows/tests.yml
+      - README.md
+      - docs/architecture.md
+      - pocketsynth/_onnxvoice.py
+      - pocketsynth/frontend.py
+      - pocketsynth/runtime.py
+      - pyproject.toml
+      - tests/test_frontend.py
+      - tests/test_package_boundary.py
+      - tests/test_runtime_strict.py
+      - tests/test_runtime_synthesis.py
+    stats:
+      files_changed: 12
+      insertions: 307
+      deletions: 45
+    inspected: false
+    inspected_paths: []
+    observed_behavior: ""
+    public_impact: unknown
+    decision: needs_review
+    stale: false
+    evidence_subject: "feat: better EOS handling"

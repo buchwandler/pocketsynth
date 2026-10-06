@@ -1,0 +1,698 @@
+ .github/workflows/python-publish.yml |   2 +-
+ .github/workflows/tests.yml          |   2 +-
+ README.md                            |  12 +++-
+ docs/architecture.md                 |   6 +-
+ pocketsynth/_onnxvoice.py            |   2 +-
+ pocketsynth/frontend.py              |  10 ++-
+ pocketsynth/runtime.py               | 131 +++++++++++++++++++++++++++++++----
+ pyproject.toml                       |   6 +-
+ tests/test_frontend.py               |  17 +++++
+ tests/test_package_boundary.py       |  14 ++--
+ tests/test_runtime_strict.py         |  37 +++++++++-
+ tests/test_runtime_synthesis.py      | 113 +++++++++++++++++++++++++++---
+ 12 files changed, 307 insertions(+), 45 deletions(-)
+
+diff --git a/.github/workflows/python-publish.yml b/.github/workflows/python-publish.yml
+index 18b27de..ba20e8f 100644
+--- a/.github/workflows/python-publish.yml
++++ b/.github/workflows/python-publish.yml
+@@ -101,7 +101,7 @@ jobs:
+               ]
+               assert onnxvoice_requirements
+               assert all(
+-                  has_minimum([requirement], "onnxvoice", "0.2.2")
++                  has_minimum([requirement], "onnxvoice", "0.2.4")
+                   for requirement in onnxvoice_requirements
+               )
+               assert all(
+diff --git a/.github/workflows/tests.yml b/.github/workflows/tests.yml
+index 4ff681a..6bda57b 100644
+--- a/.github/workflows/tests.yml
++++ b/.github/workflows/tests.yml
+@@ -68,7 +68,7 @@ jobs:
+     runs-on: ubuntu-latest
+     strategy:
+       matrix:
+-        onnxvoice-version: ["0.2.2"]
++        onnxvoice-version: ["0.2.4"]
+     steps:
+     - uses: actions/checkout@v4
+     - name: Setup Python
+diff --git a/README.md b/README.md
+index 02a0073..72ce5ba 100644
+--- a/README.md
++++ b/README.md
+@@ -19,7 +19,7 @@ python -m pip install 'pocketsynth[cpu]'
+
+ The `gpu` extra selects OnnxVoice's GPU runtime. `playback` adds `sounddevice` for `RenderedSegment.play()`.
+
+-Managed Kyutai prompt support uses the OnnxVoice prompt catalog and cache API. The supported dependency range remains `onnxvoice>=0.2.2,<0.3`; installation extras select the desired runtime backend.
++Managed Kyutai prompt support uses the OnnxVoice prompt catalog and cache API. The supported dependency range remains `onnxvoice>=0.2.4,<0.3`; installation extras select the desired runtime backend.
+
+ ## Direct engine use
+
+@@ -82,13 +82,19 @@ with PocketRuntime.from_pretrained("english_2026-04") as runtime:
+
+ An explicit request language is a compatibility assertion against the active bundle. `None` uses the bundle language. PocketSynth does not switch bundles or route languages automatically.
+
++## EOS tail policy and result metadata
++
++Text-aware synthesis resolves `frames_after_eos` in this order: an explicit `GenerationConfig` value (including `0`), the bundle's fixed recommendation, then an automatic fallback. The fallback is 5 frames for prepared text with at most four words and 3 frames for longer text. `synthesize()`, `synthesize_text()`, and `iter_chunks()` apply this policy; chunked rendering resolves it independently for each model-text chunk.
++
++Raw `infer_tokens()` receives token IDs without their original text, so it does not guess word boundaries: it uses an explicit value or bundle recommendation and otherwise passes `None` to OnnxVoice. `SynthesisResult.metadata["generation_config"]` records the requested configuration; `effective_generation` records the actual settings and `frames_after_eos_source` (`explicit`, `bundle`, `automatic_short`, `automatic_default`, or `backend`); `backend_inference` preserves validated scalar backend metadata when available. Recurrent model state is not exposed.
++
+ ## Voices
+
+ Pocket bundles and voice conditioning are separate. `prepare_voice()` accepts bundle-declared predefined names, local PCM WAV paths, `Path` objects, in-memory `(audio, sample_rate)` tuples, existing `PreparedVoice` objects, and managed `kyutai-tts-voices:<id>` references. Reference WAVs support uncompressed PCM 8-, 16-, 24-, and 32-bit mono or multichannel audio; multichannel input is downmixed and audio is resampled to the bundle rate before OnnxVoice encodes it.
+
+ `PreparedVoice` can be reused for many requests on a compatible runtime. For a local reference, `fingerprint` identifies normalized audio and sample rate. For a managed prompt, `voice_prompt` carries typed catalog provenance, while `bundle_revision` identifies the model bundle. A managed identity keeps the catalog asset SHA-256 (`source_sha256`) separate from the normalized prepared-audio fingerprint (`prepared_sha256`).
+
+-OnnxVoice 0.2.2 owns prompt catalogs, prompt WAV fetching, cache integrity, and offline behavior. PocketSynth delegates managed audio fetching to OnnxVoice during `prepare_voice()`; metadata discovery does not fetch audio or open a model. Predefined voice states are separate assets and may require accepting upstream access terms and authenticating with Hugging Face.
++OnnxVoice owns prompt catalogs, prompt WAV fetching, cache integrity, and offline behavior. PocketSynth delegates managed audio fetching to OnnxVoice during `prepare_voice()`; metadata discovery does not fetch audio or open a model. Predefined voice states are separate assets and may require accepting upstream access terms and authenticating with Hugging Face.
+
+ The simple managed workflow uses the current catalog identity for a reference:
+
+@@ -117,7 +123,7 @@ with PocketRuntime.from_pretrained("english_2026-04") as runtime:
+     # identity['prepared_sha256'] is the normalized audio fingerprint.
+ ```
+
+-`list_voice_prompts()` and `inspect_voice_prompt()` return typed prompt metadata without requiring a runtime, installing a bundle, or fetching WAVs. `discover_bundles()` similarly returns PocketSynth-owned `DiscoveredBundle` and `DiscoveredVoice` records without installing or opening a bundle; the DTOs validate catalog fields, and `DiscoveredBundle.metadata` is a copied read-only mapping. `runtime_identity(bundle)` reports `engine_version`, `runtime_revision`, `request_api_version`, `catalog_revision`, and `bundle_revision` without opening a model; OnnxVoice 0.2.2 does not expose a separate catalog revision, so `catalog_revision` is `None`. The discovery APIs accept explicit `offline` and `refresh` options; `runtime_identity()` only reads installed package metadata. The runtime list/inspect wrappers remain available, but standalone functions are the metadata-discovery entry points.
++`list_voice_prompts()` and `inspect_voice_prompt()` return typed prompt metadata without requiring a runtime, installing a bundle, or fetching WAVs. `discover_bundles()` similarly returns PocketSynth-owned `DiscoveredBundle` and `DiscoveredVoice` records without installing or opening a bundle; the DTOs validate catalog fields, and `DiscoveredBundle.metadata` is a copied read-only mapping. `runtime_identity(bundle)` reports `engine_version`, `runtime_revision`, `request_api_version`, `catalog_revision`, and `bundle_revision` without opening a model; OnnxVoice does not expose a separate catalog revision, so `catalog_revision` is `None`. The discovery APIs accept explicit `offline` and `refresh` options; `runtime_identity()` only reads installed package metadata. The runtime list/inspect wrappers remain available, but standalone functions are the metadata-discovery entry points.
+
+ The CLI supports metadata-only prompt listing and direct prompt inspection. Filters include `--dataset`, `--variant`, `--license`, and `--offline`:
+
+diff --git a/docs/architecture.md b/docs/architecture.md
+index ff4be6b..631772d 100644
+--- a/docs/architecture.md
++++ b/docs/architecture.md
+@@ -87,13 +87,13 @@ An explicit request language is a compatibility assertion against the active bun
+
+ A managed `PreparedVoice` exposes its typed `voice_prompt`; its `source_revision` and `bundle_revision` refer to the active Pocket bundle, not the prompt. Its `identity` has kind `managed_reference`, with `source_sha256` for the catalog WAV and `prepared_sha256` for the normalized float32 audio fingerprint after decoding, downmixing, resampling, and normalization. These hashes are deliberately distinct. Local reference and predefined voice identities keep their existing semantics.
+
+-`runtime_identity(bundle=None)` reports PocketSynth's `engine_version`, the installed OnnxVoice `runtime_revision`, `request_api_version`, an optional `catalog_revision`, and the selected `bundle_revision`. It reads package metadata only, is deterministic, excludes cache/absolute paths and process-specific values, and does not open a model. OnnxVoice 0.2.2 exposes bundle revisions but no separate catalog revision, so PocketSynth returns `catalog_revision=None` rather than inventing one. The supported dependency range remains `onnxvoice>=0.2.2,<0.3`.
++`runtime_identity(bundle=None)` reports PocketSynth's `engine_version`, the installed OnnxVoice `runtime_revision`, `request_api_version`, an optional `catalog_revision`, and the selected `bundle_revision`. It reads package metadata only, is deterministic, excludes cache/absolute paths and process-specific values, and does not open a model. OnnxVoice exposes bundle revisions but no separate catalog revision, so PocketSynth returns `catalog_revision=None` rather than inventing one. The supported dependency range remains `onnxvoice>=0.2.4,<0.3`.
+
+ The basic workflow prepares the current catalog entry; the pinned workflow inspects metadata before opening a runtime and then passes that record to `prepare_voice()`. Prompt inspection and fetching are separate stages.
+ Voice-level configuration can leave audio unchanged, apply a catalog calibration, or explicitly override gain. Missing calibration is reported in metadata; PocketSynth does not invent measurements or measure loudness per request.
+
+ ## Generation and results
+
+-`GenerationConfig` contains Pocket inference controls: temperature, LSD steps, maximum frames, and frames after EOS. When frames-after-EOS is omitted, PocketRuntime uses the bundle recommendation.
++`GenerationConfig` contains Pocket inference controls: temperature, LSD steps, maximum frames, and frames after EOS. Text-aware synthesis resolves the tail by explicit override (including `0`), bundle recommendation, then automatic fallback: 5 frames for prepared text of at most four words, or 3 frames for longer text. `synthesize()`, `synthesize_text()`, and `iter_chunks()` apply this policy, with chunked rendering resolving each chunk independently. Raw `infer_tokens()` has no original text and therefore uses an explicit value or bundle recommendation, otherwise passing `None` rather than guessing from token IDs.
+
+-`SynthesisResult` contains finite mono float32 audio at the bundle's native sample rate, request ID and text, resolved language, empty word timings when the engine has none, and structured bundle, voice, token, generation, calibration, diagnostics, and timing metadata. WAV conversion clamps samples when writing PCM16. Output mastering remains caller-owned.
++`SynthesisResult` contains finite mono float32 audio at the bundle's native sample rate, request ID and text, resolved language, empty word timings when the engine has none, and structured bundle, voice, token, requested/effective generation, backend inference, calibration, diagnostics, and timing metadata. `generation_config` preserves caller-requested settings; `effective_generation` records the settings actually sent to OnnxVoice and `frames_after_eos_source` (`explicit`, `bundle`, `automatic_short`, `automatic_default`, or `backend`); `backend_inference` contains validated JSON-safe scalar metadata when available and excludes recurrent model state. WAV conversion clamps samples when writing PCM16. Output mastering remains caller-owned.
+diff --git a/pocketsynth/_onnxvoice.py b/pocketsynth/_onnxvoice.py
+index 8039a2d..f80872c 100644
+--- a/pocketsynth/_onnxvoice.py
++++ b/pocketsynth/_onnxvoice.py
+@@ -24,7 +24,7 @@ from .errors import (
+     VoicePromptError,
+ )
+
+-_ONNXVOICE_MINIMUM_VERSION = "0.2.2"
++_ONNXVOICE_MINIMUM_VERSION = "0.2.4"
+
+
+ @dataclass(frozen=True, slots=True)
+diff --git a/pocketsynth/frontend.py b/pocketsynth/frontend.py
+index ee93aa8..577e05c 100644
+--- a/pocketsynth/frontend.py
++++ b/pocketsynth/frontend.py
+@@ -46,13 +46,21 @@ class PocketFrontend:
+             value = f" {value} "
+         return value
+
+-    def encode(self, text: str) -> tuple[int, ...]:
++    def prepare_and_encode(self, text: str) -> tuple[str, tuple[int, ...]]:
+         prepared = self.prepare_text(text)
++        return prepared, self.encode_prepared(prepared)
++
++    def encode_prepared(self, prepared: str) -> tuple[int, ...]:
++        """Encode text that has already passed through :meth:`prepare_text`."""
+         if not prepared:
+             return ()
+         values = self.processor.EncodeAsIds(prepared)
+         return tuple(int(value) for value in values)
+
++    def encode(self, text: str) -> tuple[int, ...]:
++        _, token_ids = self.prepare_and_encode(text)
++        return token_ids
++
+     def split_for_model(self, text: str) -> tuple[str, ...]:
+         prepared = self.prepare_text(text)
+         if not prepared:
+diff --git a/pocketsynth/runtime.py b/pocketsynth/runtime.py
+index c9c0366..d92f66e 100644
+--- a/pocketsynth/runtime.py
++++ b/pocketsynth/runtime.py
+@@ -3,6 +3,7 @@ from __future__ import annotations
+ import time
+ from collections.abc import Iterator, Mapping, Sequence
+ from dataclasses import asdict, dataclass, replace
++from math import isfinite
+ from pathlib import Path
+ from typing import Any
+
+@@ -55,10 +56,19 @@ from .voice_prompts import list_voice_prompts as query_voice_prompts
+ @dataclass(frozen=True, slots=True)
+ class _EncodedRequest:
+     language: str
++    model_text: str
+     token_ids: tuple[int, ...]
+     measure: RequestMeasure
+
+
++@dataclass(frozen=True, slots=True)
++class _InferenceOutput:
++    audio: np.ndarray
++    metadata: Mapping[str, object]
++    frames_after_eos: int | None
++    frames_after_eos_source: str
++
++
+ class PocketRuntime:
+     """Low-level Pocket bundle runtime backed by an OnnxVoice PocketAdapter."""
+
+@@ -329,10 +339,73 @@ class PocketRuntime:
+             )
+         return self._infer_tokens_unchecked(token_ids, voice, generation)
+
+-    def _infer_tokens_unchecked(
+-        self, token_ids: Sequence[int], voice: PreparedVoice, generation: GenerationConfig
+-    ) -> np.ndarray:
++    def _resolve_frames_after_eos(
++        self,
++        generation: GenerationConfig,
++        *,
++        model_text: str | None,
++    ) -> tuple[int | None, str]:
++        if generation.frames_after_eos is not None:
++            return generation.frames_after_eos, "explicit"
++
++        recommended = self.metadata.model_recommended_frames_after_eos
++        if recommended is not None:
++            return recommended, "bundle"
++
++        if model_text is None:
++            return None, "backend"
++
++        if len(model_text.split()) <= 4:
++            return 5, "automatic_short"
++        return 3, "automatic_default"
++
++    @staticmethod
++    def _effective_generation_metadata(
++        generation: GenerationConfig,
++        inference: _InferenceOutput,
++    ) -> dict[str, object]:
++        return {
++            "temperature": generation.temperature,
++            "lsd_steps": generation.lsd_steps,
++            "max_frames": generation.max_frames,
++            "frames_after_eos": inference.frames_after_eos,
++            "frames_after_eos_source": inference.frames_after_eos_source,
++        }
++
++    def _validated_backend_metadata(self, result: Any) -> dict[str, object]:
++        raw_metadata = getattr(result, "metadata", None)
++        if raw_metadata is None:
++            return {}
++        if not isinstance(raw_metadata, Mapping):
++            raise ModelInferenceError("backend inference metadata must be a mapping")
++
++        metadata: dict[str, object] = {}
++        for key, raw_value in raw_metadata.items():
++            value = raw_value.item() if isinstance(raw_value, np.generic) else raw_value
++            if not isinstance(key, str) or not (
++                value is None
++                or isinstance(value, (str, bool, int))
++                or (isinstance(value, float) and isfinite(value))
++            ):
++                raise ModelInferenceError(
++                    "backend inference metadata must contain JSON-safe scalar values"
++                )
++            metadata[key] = value
++        return metadata
++
++    def _infer_tokens_detailed(
++        self,
++        token_ids: Sequence[int],
++        voice: PreparedVoice,
++        generation: GenerationConfig,
++        *,
++        model_text: str | None = None,
++    ) -> _InferenceOutput:
+         self._ensure_open()
++        frames_after_eos, frames_source = self._resolve_frames_after_eos(
++            generation,
++            model_text=model_text,
++        )
+         try:
+             result = self.runtime.infer(
+                 token_ids,
+@@ -340,11 +413,7 @@ class PocketRuntime:
+                 temperature=generation.temperature,
+                 lsd_steps=generation.lsd_steps,
+                 max_frames=generation.max_frames,
+-                frames_after_eos=(
+-                    generation.frames_after_eos
+-                    if generation.frames_after_eos is not None
+-                    else self.metadata.model_recommended_frames_after_eos
+-                ),
++                frames_after_eos=frames_after_eos,
+             )
+         except Exception as exc:
+             if isinstance(exc, (ValueError, ModelInferenceError)):
+@@ -360,7 +429,17 @@ class PocketRuntime:
+             raise ModelInferenceError("inference audio must be one-dimensional and finite")
+         if audio.size == 0:
+             raise ModelInferenceError("inference audio must not be empty")
+-        return audio
++        return _InferenceOutput(
++            audio=audio,
++            metadata=self._validated_backend_metadata(result),
++            frames_after_eos=frames_after_eos,
++            frames_after_eos_source=frames_source,
++        )
++
++    def _infer_tokens_unchecked(
++        self, token_ids: Sequence[int], voice: PreparedVoice, generation: GenerationConfig
++    ) -> np.ndarray:
++        return self._infer_tokens_detailed(token_ids, voice, generation).audio
+
+     def iter_chunks(
+         self,
+@@ -393,15 +472,24 @@ class PocketRuntime:
+         if not model_texts:
+             raise EmptyTextError("segment text produced no Pocket model chunks")
+         for index, model_text in enumerate(model_texts):
+-            token_ids = self.frontend.encode(model_text)
+-            audio = self.infer_tokens(token_ids, voice, config, text_length=len(segment.text))
++            token_ids = self.frontend.encode_prepared(model_text)
++            inference = self._infer_tokens_detailed(
++                token_ids,
++                voice,
++                config,
++                model_text=model_text,
++            )
+             yield RenderedChunk(
+                 index=index,
+                 text=model_text,
+                 model_text=model_text,
+                 token_ids=token_ids,
+-                audio=audio,
++                audio=inference.audio,
+                 sample_rate=self.sample_rate,
++                metadata={
++                    "effective_generation": self._effective_generation_metadata(config, inference),
++                    "backend_inference": dict(inference.metadata),
++                },
+             )
+
+     def _validate_request(self, request: SynthesisRequest) -> str:
+@@ -417,14 +505,19 @@ class PocketRuntime:
+         return self._validate_language(request.language)
+
+     def _encode_request(self, request: SynthesisRequest, language: str) -> _EncodedRequest:
+-        token_ids = tuple(self.frontend.encode(request.text))
++        model_text, token_ids = self.frontend.prepare_and_encode(request.text)
+         if not token_ids:
+             raise EmptyTextError("request text produced no Pocket tokens")
+         measure = RequestMeasure(
+             amount=len(token_ids),
+             maximum=self.metadata.max_token_per_chunk,
+         )
+-        return _EncodedRequest(language=language, token_ids=token_ids, measure=measure)
++        return _EncodedRequest(
++            language=language,
++            model_text=model_text,
++            token_ids=token_ids,
++            measure=measure,
++        )
+
+     def measure_request(self, request: SynthesisRequest) -> RequestMeasure:
+         """Measure one complete request without voice preparation or inference."""
+@@ -472,7 +565,13 @@ class PocketRuntime:
+                 bundle_id=self.bundle_id,
+             )
+         inference_started = time.perf_counter()
+-        audio = self._infer_tokens_unchecked(token_ids, voice, generation)
++        inference = self._infer_tokens_detailed(
++            token_ids,
++            voice,
++            generation,
++            model_text=encoded.model_text,
++        )
++        audio = inference.audio
+         inference_ms = (time.perf_counter() - inference_started) * 1000
+         voice_identity = voice.identity
+         calibration_catalog: Mapping[str, object] = {}
+@@ -502,6 +601,8 @@ class PocketRuntime:
+                 "voice_identity": voice_identity,
+                 "token_count": len(token_ids),
+                 "generation_config": asdict(generation),
++                "effective_generation": self._effective_generation_metadata(generation, inference),
++                "backend_inference": dict(inference.metadata),
+                 "voice_level_config": asdict(voice_level_config),
+                 "voice_level_application": asdict(voice_level_application),
+                 "runtime_diagnostics": asdict(diagnostics),
+diff --git a/pyproject.toml b/pyproject.toml
+index 09899eb..09d01f8 100644
+--- a/pyproject.toml
++++ b/pyproject.toml
+@@ -13,7 +13,7 @@ authors = [{name = "Pocketsynth contributors"}]
+ dependencies = [
+   "numpy>=1.23",
+   "sentencepiece>=0.2,<0.3",
+-  "onnxvoice>=0.2.2,<0.3",
++  "onnxvoice>=0.2.4,<0.3",
+   "phrasplit>=0.3.4,<0.4",
+ ]
+ keywords = ["tts", "text-to-speech", "pocket-tts", "onnx", "speech", "onnxruntime"]
+@@ -30,8 +30,8 @@ classifiers = [
+   "Topic :: Multimedia :: Sound/Audio :: Speech",
+ ]
+ [project.optional-dependencies]
+-cpu = ["onnxvoice[cpu,pocket]>=0.2.2,<0.3"]
+-gpu = ["onnxvoice[gpu,pocket]>=0.2.2,<0.3"]
++cpu = ["onnxvoice[cpu,pocket]>=0.2.4,<0.3"]
++gpu = ["onnxvoice[gpu,pocket]>=0.2.4,<0.3"]
+ playback = ["sounddevice>=0.5,<0.6"]
+ dev = [
+   "pytest>=8",
+diff --git a/tests/test_frontend.py b/tests/test_frontend.py
+index 381209e..5b6e9b6 100644
+--- a/tests/test_frontend.py
++++ b/tests/test_frontend.py
+@@ -1,4 +1,5 @@
+ import json
++from unittest.mock import patch
+
+ import pytest
+
+@@ -58,6 +59,22 @@ def test_frontend_applies_only_pocket_model_normalization(tmp_path) -> None:
+     assert frontend.encode("Pay $12.50") == (0, 1)
+
+
++def test_prepare_and_encode_prepares_text_once(tmp_path) -> None:
++    frontend = PocketFrontend(
++        "unused",
++        make_metadata(tmp_path, remove_semicolons=True, pad_with_spaces_for_short_inputs=True),
++        processor=FakeProcessor(),
++    )
++    raw_text = "  Pay $12.50;  then wait.  "
++
++    with patch.object(frontend, "prepare_text", wraps=frontend.prepare_text) as prepare_text:
++        model_text, token_ids = frontend.prepare_and_encode(raw_text)
++
++    assert model_text == " Pay $12.50, then wait. "
++    assert token_ids == (0, 1, 2, 3)
++    prepare_text.assert_called_once_with(raw_text)
++
++
+ def test_frontend_rejects_single_oversized_token_unit(tmp_path) -> None:
+     frontend = PocketFrontend(
+         "unused",
+diff --git a/tests/test_package_boundary.py b/tests/test_package_boundary.py
+index 09b1071..86f4611 100644
+--- a/tests/test_package_boundary.py
++++ b/tests/test_package_boundary.py
+@@ -100,18 +100,20 @@ def test_cli_and_examples_do_not_import_private_onnxvoice_catalog_adapters() ->
+ def test_project_metadata_has_only_supported_engine_dependencies() -> None:
+     metadata = (ROOT / "pyproject.toml").read_text(encoding="utf-8").casefold()
+     assert all(name not in metadata for name in FORBIDDEN_IMPORTS)
+-    assert '"onnxvoice>=0.2.2,<0.3"' in metadata
+-    assert '"onnxvoice[cpu,pocket]>=0.2.2,<0.3"' in metadata
+-    assert '"onnxvoice[gpu,pocket]>=0.2.2,<0.3"' in metadata
++    assert '"onnxvoice>=0.2.4,<0.3"' in metadata
++    assert '"onnxvoice[cpu,pocket]>=0.2.4,<0.3"' in metadata
++    assert '"onnxvoice[gpu,pocket]>=0.2.4,<0.3"' in metadata
+     onnxvoice_minimums = re.findall(r'"onnxvoice(?:\[[^]]+\])?>=([^,<"]+)', metadata)
+     assert onnxvoice_minimums
+-    assert set(onnxvoice_minimums) == {"0.2.2"}
++    assert set(onnxvoice_minimums) == {"0.2.4"}
++    adapter = (PACKAGE / "_onnxvoice.py").read_text(encoding="utf-8")
++    assert '_ONNXVOICE_MINIMUM_VERSION = "0.2.4"' in adapter
+
+
+ def test_onnxvoice_compatibility_workflow_covers_supported_versions() -> None:
+     workflow = (ROOT / ".github" / "workflows" / "tests.yml").read_text(encoding="utf-8")
+
+-    assert 'onnxvoice-version: ["0.2.2"]' in workflow
++    assert 'onnxvoice-version: ["0.2.4"]' in workflow
+     for test_file in (
+         "tests/test_onnxvoice_boundary.py",
+         "tests/test_package_boundary.py",
+@@ -124,5 +126,5 @@ def test_onnxvoice_compatibility_workflow_covers_supported_versions() -> None:
+ def test_publish_workflow_requires_supported_onnxvoice_window() -> None:
+     workflow = (ROOT / ".github" / "workflows" / "python-publish.yml").read_text(encoding="utf-8")
+
+-    assert 'has_minimum([requirement], "onnxvoice", "0.2.2")' in workflow
++    assert 'has_minimum([requirement], "onnxvoice", "0.2.4")' in workflow
+     assert 'spec.operator == "<" and Version(spec.version) == Version("0.3")' in workflow
+diff --git a/tests/test_runtime_strict.py b/tests/test_runtime_strict.py
+index 76f28ec..455b49d 100644
+--- a/tests/test_runtime_strict.py
++++ b/tests/test_runtime_strict.py
+@@ -28,11 +28,20 @@ from tests.fakes import FakeBundleMetadata
+ class RecordingFrontend:
+     def __init__(self) -> None:
+         self.encoded: list[str] = []
++        self.prepared: list[str] = []
+
+-    def encode(self, text: str) -> tuple[int, ...]:
++    def prepare_and_encode(self, text: str) -> tuple[str, tuple[int, ...]]:
++        self.prepared.append(text)
++        model_text = " ".join(text.strip().split())
++        return model_text, self.encode_prepared(model_text)
++
++    def encode_prepared(self, text: str) -> tuple[int, ...]:
+         self.encoded.append(text)
+         return tuple(range(len(text)))
+
++    def encode(self, text: str) -> tuple[int, ...]:
++        return self.prepare_and_encode(text)[1]
++
+     def split_for_model(self, text: str) -> tuple[str, ...]:
+         raise AssertionError("strict synthesis must not split for the model")
+
+@@ -41,6 +50,7 @@ class RecordingInferenceRuntime:
+     def __init__(self) -> None:
+         self.calls: list[tuple[tuple[int, ...], dict[str, object]]] = []
+         self.failure: Exception | None = None
++        self.result_metadata: object = None
+
+     def infer(self, token_ids: Sequence[int], **kwargs: object) -> SimpleNamespace:
+         self.calls.append((tuple(token_ids), kwargs))
+@@ -49,18 +59,20 @@ class RecordingInferenceRuntime:
+         return SimpleNamespace(
+             audio=np.asarray(token_ids, dtype=np.float32),
+             sample_rate=24_000,
++            metadata=self.result_metadata,
+         )
+
+
+ def make_runtime(
+     *,
+     max_tokens: int = 50,
++    recommendation: int | None = 9,
+     raw_metadata: dict[str, object] | None = None,
+ ) -> tuple[PocketRuntime, RecordingFrontend, RecordingInferenceRuntime]:
+     metadata = FakeBundleMetadata(
+         language="en",
+         max_token_per_chunk=max_tokens,
+-        model_recommended_frames_after_eos=9,
++        model_recommended_frames_after_eos=recommendation,
+         raw=raw_metadata,
+     )
+     frontend = RecordingFrontend()
+@@ -127,6 +139,9 @@ def test_strict_synthesis_encodes_full_text_once_and_infers_once() -> None:
+     assert result.metadata["bundle_id"] == "english-test"
+     assert result.metadata["bundle_revision"] == "revision-1"
+     assert result.metadata["generation_config"]["temperature"] == 1.2
++    assert result.metadata["effective_generation"]["frames_after_eos"] == 4
++    assert result.metadata["effective_generation"]["frames_after_eos_source"] == "explicit"
++    assert result.metadata["backend_inference"] == {}
+     assert backend.calls[0][1] == {
+         "voice_state": voice.state,
+         "temperature": 1.2,
+@@ -136,6 +151,24 @@ def test_strict_synthesis_encodes_full_text_once_and_infers_once() -> None:
+     }
+
+
++def test_strict_synthesis_uses_prepared_text_for_automatic_policy_and_metadata() -> None:
++    runtime, frontend, backend = make_runtime(recommendation=None)
++    backend.result_metadata = {
++        "frames_generated": 17,
++        "eos_detected": True,
++        "eos_step": 12,
++    }
++    request = SynthesisRequest(id="short", text="  Hello,   how are you? ")
++
++    result = runtime.synthesize(request, voice=make_voice())
++
++    assert frontend.prepared == [request.text]
++    assert frontend.encoded == ["Hello, how are you?"]
++    assert backend.calls[0][1]["frames_after_eos"] == 5
++    assert result.metadata["effective_generation"]["frames_after_eos_source"] == "automatic_short"
++    assert result.metadata["backend_inference"] == backend.result_metadata
++
++
+ def test_token_count_at_model_limit_succeeds() -> None:
+     runtime, frontend, backend = make_runtime(max_tokens=5)
+
+diff --git a/tests/test_runtime_synthesis.py b/tests/test_runtime_synthesis.py
+index ee83afe..8917681 100644
+--- a/tests/test_runtime_synthesis.py
++++ b/tests/test_runtime_synthesis.py
+@@ -21,30 +21,39 @@ class FakeFrontend:
+     def split_for_model(self, text: str) -> tuple[str, ...]:
+         return tuple(part.strip() for part in text.split("|") if part.strip())
+
+-    def encode(self, text: str) -> tuple[int, ...]:
++    def prepare_and_encode(self, text: str) -> tuple[str, tuple[int, ...]]:
++        model_text = " ".join(text.strip().split())
++        return model_text, self.encode_prepared(model_text)
++
++    def encode_prepared(self, text: str) -> tuple[int, ...]:
+         return tuple(ord(char) for char in text if not char.isspace())
+
++    def encode(self, text: str) -> tuple[int, ...]:
++        return self.prepare_and_encode(text)[1]
++
+
+ class FakeInferenceRuntime:
+     def __init__(self) -> None:
+         self.calls: list[tuple[list[int], dict[str, object]]] = []
+         self.closed = False
++        self.result_metadata: object = None
+
+     def infer(self, token_ids: list[int], **kwargs: object) -> SimpleNamespace:
+         self.calls.append((token_ids, kwargs))
+         return SimpleNamespace(
+             audio=np.asarray(token_ids, dtype=np.float32),
+             sample_rate=24_000,
++            metadata=self.result_metadata,
+         )
+
+     def close(self) -> None:
+         self.closed = True
+
+
+-def make_runtime() -> tuple[PocketRuntime, FakeInferenceRuntime]:
++def make_runtime(*, recommendation: int | None = 9) -> tuple[PocketRuntime, FakeInferenceRuntime]:
+     metadata = FakeBundleMetadata(
+         language="english_2026-04",
+-        model_recommended_frames_after_eos=9,
++        model_recommended_frames_after_eos=recommendation,
+     )
+     backend = FakeInferenceRuntime()
+     with patch("pocketsynth.runtime.PocketFrontend", return_value=FakeFrontend()):
+@@ -146,14 +155,100 @@ def test_inference_rejects_empty_audio() -> None:
+         runtime.infer_tokens((1,), make_voice(), GenerationConfig())
+
+
+-def test_frames_after_eos_uses_bundle_default_only_when_unspecified() -> None:
++@pytest.mark.parametrize(
++    ("generation", "expected_frames", "expected_source"),
++    [
++        (GenerationConfig(frames_after_eos=0), 0, "explicit"),
++        (GenerationConfig(), 9, "bundle"),
++    ],
++)
++def test_synthesis_eos_precedence_keeps_explicit_zero_and_bundle_recommendation(
++    generation: GenerationConfig,
++    expected_frames: int,
++    expected_source: str,
++) -> None:
+     runtime, backend = make_runtime()
+-    voice = make_voice()
+-    runtime.infer_tokens((1,), voice, GenerationConfig())
+-    runtime.infer_tokens((2,), voice, GenerationConfig(frames_after_eos=0))
++    result = runtime.synthesize(
++        SynthesisRequest(id="precedence", text="Hello, how are you?"),
++        voice=make_voice(),
++        config=generation,
++    )
++
++    assert backend.calls[0][1]["frames_after_eos"] == expected_frames
++    assert result.metadata["effective_generation"]["frames_after_eos"] == expected_frames
++    assert result.metadata["effective_generation"]["frames_after_eos_source"] == expected_source
++
++
++@pytest.mark.parametrize(
++    ("text", "expected_frames", "expected_source"),
++    [
++        ("Hello, how are you?", 5, "automatic_short"),
++        ("This sentence has more than four words.", 3, "automatic_default"),
++    ],
++)
++def test_synthesis_uses_text_aware_automatic_tail_and_surfaces_metadata(
++    text: str,
++    expected_frames: int,
++    expected_source: str,
++) -> None:
++    runtime, backend = make_runtime(recommendation=None)
++    backend.result_metadata = {
++        "frames_generated": 17,
++        "eos_detected": True,
++        "eos_step": 12,
++    }
++
++    result = runtime.synthesize(
++        SynthesisRequest(id="automatic", text=text),
++        voice=make_voice(),
++    )
++
++    assert backend.calls[0][1]["frames_after_eos"] == expected_frames
++    assert result.metadata["generation_config"]["frames_after_eos"] is None
++    assert result.metadata["effective_generation"] == {
++        "temperature": 0.7,
++        "lsd_steps": 1,
++        "max_frames": None,
++        "frames_after_eos": expected_frames,
++        "frames_after_eos_source": expected_source,
++    }
++    assert result.metadata["backend_inference"] == backend.result_metadata
++
++
++def test_chunked_rendering_resolves_automatic_tail_per_chunk() -> None:
++    runtime, backend = make_runtime(recommendation=None)
++    chunks = list(
++        runtime.iter_chunks(
++            SynthesisSegment(
++                id="chunked",
++                text="This first chunk contains five words|Short",
++            ),
++            voice=make_voice(),
++        )
++    )
++
++    assert [call[1]["frames_after_eos"] for call in backend.calls] == [3, 5]
++    assert [
++        chunk.metadata["effective_generation"]["frames_after_eos_source"] for chunk in chunks
++    ] == ["automatic_default", "automatic_short"]
+
+-    assert backend.calls[0][1]["frames_after_eos"] == 9
+-    assert backend.calls[1][1]["frames_after_eos"] == 0
++
++def test_raw_token_inference_preserves_none_without_text_or_bundle_recommendation() -> None:
++    runtime, backend = make_runtime(recommendation=None)
++    runtime.infer_tokens((1,), make_voice(), GenerationConfig())
++
++    assert backend.calls[0][1]["frames_after_eos"] is None
++
++
++def test_backend_metadata_rejects_non_scalar_values() -> None:
++    runtime, backend = make_runtime(recommendation=None)
++    backend.result_metadata = {"recurrent_state": [1, 2, 3]}
++
++    with pytest.raises(ModelInferenceError, match="JSON-safe scalar"):
++        runtime.synthesize(
++            SynthesisRequest(id="metadata", text="Hello"),
++            voice=make_voice(),
++        )
+
+
+ def test_incompatible_language_fails_before_inference() -> None:

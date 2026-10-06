@@ -1,0 +1,36 @@
+{
+  "candidate_count": 1,
+  "candidates": [
+    {
+      "additions": 307,
+      "deletions": 45,
+      "patch_file": "41cfd3c.patch",
+      "patch_sha256": "65d14aca36e7c13c6c2c344d0e7f6139e034c6c55e2cadcc43f635ddbf1fb908",
+      "paths": [
+        ".github/workflows/python-publish.yml",
+        ".github/workflows/tests.yml",
+        "README.md",
+        "docs/architecture.md",
+        "pocketsynth/_onnxvoice.py",
+        "pocketsynth/frontend.py",
+        "pocketsynth/runtime.py",
+        "pyproject.toml",
+        "tests/test_frontend.py",
+        "tests/test_package_boundary.py",
+        "tests/test_runtime_strict.py",
+        "tests/test_runtime_synthesis.py"
+      ],
+      "sha": "41cfd3cb4586cf738820fac082efbe89312e8345",
+      "short_sha": "41cfd3c",
+      "source_ref": "git:41cfd3cb4586cf738820fac082efbe89312e8345"
+    }
+  ],
+  "git_base_ref": "d97537260a81771415c0795b8c535f8f804279b5",
+  "git_base_sha": "d97537260a81771415c0795b8c535f8f804279b5",
+  "git_head_ref": "41cfd3cb4586cf738820fac082efbe89312e8345",
+  "git_head_sha": "41cfd3cb4586cf738820fac082efbe89312e8345",
+  "include_merges": "nontrivial",
+  "object_type": "git_evidence_manifest",
+  "release_version": "v0.2.5",
+  "schema_version": 1
+}

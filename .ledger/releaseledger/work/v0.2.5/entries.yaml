@@ -1,0 +1,47 @@
+schema: releaseledger.entry-batch.v1
+operation: create
+schema_version: 1
+object_type: release_entry_batch
+release_version: v0.2.5
+git_base_ref: d97537260a81771415c0795b8c535f8f804279b5
+git_base_sha: d97537260a81771415c0795b8c535f8f804279b5
+git_head_ref: 41cfd3cb4586cf738820fac082efbe89312e8345
+git_head_sha: 41cfd3cb4586cf738820fac082efbe89312e8345
+include_merges: nontrivial
+entries:
+  - kind: added
+    summary: "Added text-aware EOS tail selection and validated inference metadata for strict and chunked synthesis"
+    status: accepted
+    source_refs:
+      - git:41cfd3cb4586cf738820fac082efbe89312e8345
+    paths:
+      - README.md
+      - docs/architecture.md
+      - pocketsynth/frontend.py
+      - pocketsynth/runtime.py
+      - tests/test_frontend.py
+      - tests/test_runtime_strict.py
+      - tests/test_runtime_synthesis.py
+    sources:
+      - git:41cfd3cb4586cf738820fac082efbe89312e8345
+    prs: []
+    issues: []
+    contributors:
+      - "@holgern"
+  - kind: changed
+    summary: "Changed the minimum supported OnnxVoice version to 0.2.4"
+    status: accepted
+    source_refs: []
+    paths:
+      - .github/workflows/python-publish.yml
+      - .github/workflows/tests.yml
+      - docs/architecture.md
+      - pocketsynth/_onnxvoice.py
+      - pyproject.toml
+      - tests/test_package_boundary.py
+    sources:
+      - git:41cfd3cb4586cf738820fac082efbe89312e8345
+    prs: []
+    issues: []
+    contributors:
+      - "@holgern"
